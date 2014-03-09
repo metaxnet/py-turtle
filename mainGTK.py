@@ -160,6 +160,10 @@ class Commander:
             #(["clearstamps"],        ["nqe`hvtmvt"]),\
             #(["distance"],           ["mrhq"]),\
 
+        ERRORS = [["too many %s", "ivtr mdi %s"],\
+                  ["too few %s", "fhvt mdi %s"]\
+                ]
+
         self.HH = HebrewHandler()
         self.movement_commands = {}
         self.commands = {}
@@ -179,6 +183,7 @@ class Commander:
         self.temp_image = None
         self.command_loop_level = 0
         self.current_proc_name = False
+        self.incomplete_line = ""
 
         for w in COMMANDS:
            logo = w[0]
@@ -209,6 +214,7 @@ class Commander:
     def tokenize(self, text, debug=False):
         if debug: 
             print "Tokenizing", text
+        text = self.incomplete_line + " " +text
         i = 0
         tokens = []
         token = ""
@@ -276,6 +282,8 @@ class Commander:
                         else:
                             tokens.append(text[i])
                     token=""
+                else:
+                    token = token + text[i]
             
             elif text[i] == " ":
                 quotation_flag = False # After a quotation mark outside square brackets, a word is delimited by a space, a square bracket, or a parenthesis.
@@ -293,9 +301,15 @@ class Commander:
             print tokens, token, brackets_level
 
         if brackets_level > 0:
-            error = self.HH.to_hebrew("ivtr mdi " + brackets_type[0])
-        elif brackets_level < 0:
-            error = self.HH.to_hebrew("ivtr mdi " + brackets_type[1])
+            #error = self.HH.to_hebrew("ivtr mdi " + brackets_type[0])
+            error = 0 #OPEN_BRACKETS_ERROR
+            self.incomplete_line = text
+        else:
+            self.incomplete_line = ""
+
+        if brackets_level < 0:
+            #error = self.HH.to_hebrew("ivtr mdi " + brackets_type[1])
+            error = 1 #TOO_MANY_CLOSING_BRACKETS_ERROR
 
         tokens = [x for x in tokens if x]
         if debug:
@@ -357,8 +371,8 @@ class Commander:
         elif token[0] == "[" and token[-1] == "]":
             value = token
         else:
-            value = float(token)
-
+            value = float(token)           
+            
         if words and words[0] in "+-/*%" and not parameter_only:
             operator = words[0]
             value2, words, error = self.process_expression(words[1:], namespace)
@@ -400,6 +414,7 @@ class Commander:
         
         
     def handle_text(self, text, namespace={}):
+        # missing end brackets/parentheses should cause continuation line
         lines = text.split("\n")
         i = 0
         wait_for_complete_line_flag = False
@@ -442,6 +457,8 @@ class Commander:
             self.temp_image = None
         unitext = text.decode("utf-8")
         words, error = self.tokenize(unitext)
+        if error == 0:
+           return True
 
         while words:
             if debug: 
@@ -491,7 +508,8 @@ class Commander:
                 elif token == "load":
                     filename, words, error =  self.process_expression(words[1:], namespace)
                     f = open(filename[1:], "rb")
-                    lines = f.readlines()
+                    # REPLACE THIS WITH HANDLE_TEXT and treat open brackets as indication of line continuation
+                    lines = [l.replace("\r", "") for l in f.readlines()]
                     for line in lines:
                         all_ok = self.handle_command(line[:-1])
 
@@ -967,7 +985,7 @@ class Commander:
             line_ex = closest[0]
             line_ey = closest[1]
 
-        return int(line_sx), int(line_sy), int(line_ex), int(line_ey)
+        return line_sx, line_sy, line_ex, line_ey
             
     def _move_to_position(self, endx, endy):
         startx, starty = self._get_turtle_position()
@@ -989,49 +1007,54 @@ class Commander:
                 self._draw(line_startx, line_starty, line_endx, line_endy)
                 if line_endx == endx and line_endy == endy:
                     all_ok = False
-                dx = line_endx - line_startx + 0.0
-                dy = line_endy - line_starty + 0.0
-                sy = line_endy
-                sx = line_endx
+                else:
+                    dx = line_endx - line_startx + 0.0
+                    dy = line_endy - line_starty + 0.0
+                    sy = line_endy
+                    sx = line_endx
                 
-                if line_endx == 0:
-                   sx = w
-                elif line_endx == w:
-                   sx = 0
+                    if line_endx == 0:
+                        sx = w
+                    elif line_endx == w:
+                        sx = 0
                    
-                if line_endy == 0:
-                   sy = h
-                elif line_endy == h:
-                   sy = 0
+                    if line_endy == 0:
+                        sy = h
+                    elif line_endy == h:
+                        sy = 0
 
-                deltax = deltax - dx
-                deltay = deltay - dy
-                endx = sx + deltax
-                endy = sy + deltay
+                    deltax = deltax - dx
+                    deltay = deltay - dy
+                    endx = sx + deltax
+                    endy = sy + deltay
 
-                if sx == endx and sy == endy:
-                    all_ok = False
-                else:                  
-                    segment = self._calculate_visible_segment(sx, sy, endx, endy)
-                    if segment and segment[0] == segment[2] and segment[1] == segment[3]:
+                    if sx == endx and sy == endy:
                         all_ok = False
+                    else:                  
+                        segment = self._calculate_visible_segment(sx, sy, endx, endy)
+                        if segment and segment[0] == segment[2] and segment[1] == segment[3]:
+                            all_ok = False
                 
         elif self.draw_mode == MODE_FENCE:
+            all_ok = True
             if endx < 0:
                 endx = 0.0
+                all_ok = False
             elif endx > w - 1:
-                endy = w - 1.0
+                endx = w - 1.0
+                all_ok = False
             if endy < 0:
                 endy = 0.0
+                all_ok = False
             elif endy > h - 1:
+                all_ok = False
                 endy = h -1.0
             
-            if self.pen_position == PEN_DOWN:
-                self._draw(startx, starty, endx, endy)
+            if self.pen_position == PEN_DOWN and all_ok:
+                self._draw(startx, starty, endx, endy)        
+                
         elif self.draw_mode == MODE_WINDOW:
-            print "End", endx, endy
             if self.pen_position == PEN_DOWN:
-                print "End", endx, endy
                 segment = self._calculate_visible_segment(startx, starty, endx, endy)
                 if segment:
                     line_startx, line_starty, line_endx, line_endy = segment
@@ -1042,8 +1065,7 @@ class Commander:
         return True
 
     def _draw(self, sx, sy, ex, ey):
-        print sx, sy, ex, ey
-        self.area.window.draw_line(self.gc, sx, sy, ex, ey)
+        self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
 
     def forward(self, distance):
         return self._move_distance(distance, -1)
@@ -1061,7 +1083,6 @@ class Commander:
         direction = direction + 0.0
         endx = startx + direction * dirx * (distance + 0.0)
         endy = starty + direction * diry * (distance + 0.0)
-        print "Endx=", endx, "Endy=", endy
         return self._move_to_position(endx, endy)
 
     def right(self, degrees):
@@ -1093,9 +1114,7 @@ class Commander:
         y = ty - self.turtle_home_position[1]
         if y == int(y):
             y = int(y)
-        
-        print ty, y, self.turtle_home_position[1], ty - self.turtle_home_position[1]
-        
+                
         if query == "xpos":
             return x
         elif query == "ypos":
@@ -1106,8 +1125,11 @@ class Commander:
         elif query == "heading":
             return self.turtle_heading
 
-    def towards(self, parameter):
-        print "Towards not implemented yet"
+    def towards(self, pos, namespace={}):
+        tokens, error = self.tokenize(pos[1:-1])
+        x, tokens, error = self.process_expression(tokens[:], namespace)
+        y, tokens, error = self.process_expression(tokens[:], namespace)
+        return self.handle_math("arctan", x/y)
 
     def set_pen_position(self, position):
         self.pen_position = position
@@ -1230,11 +1252,11 @@ class Commander:
         self.area.window.draw_polygon(self.gc, True, (head, toe1, toe2))
         
     def _get_turtle_position(self):
-        print "TP", self.turtle_xposition, self.turtle_yposition
+        #print "TP", self.turtle_xposition, self.turtle_yposition
         return self.turtle_xposition, self.turtle_yposition
         
     def _set_turtle_position(self, x, y):
-        print "TP", x, y
+        #print "TP", x, y
         self.turtle_xposition = x
         self.turtle_yposition = y
         

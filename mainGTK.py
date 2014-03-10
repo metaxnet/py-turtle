@@ -68,7 +68,7 @@ class Commander:
             (["clearscreen", "cs"],  ["nqe.msK"],               [],            self.clear_screen,       None),\
             (["wrap"],               ["mxb.kdvr"],              [],            self.set_draw_mode,      MODE_WRAP),\
             (["window"],             ["mxb.hlvn"],              [],            self.set_draw_mode,      MODE_WINDOW),\
-            (["fence"],              ["mxb.jdr"],               [],            self.set_draw_mode,      MODE_FENCE),\
+            (["fence"],              ["mxb.gdr"],               [],            self.set_draw_mode,      MODE_FENCE),\
             #PEN AND BACKGROUND CONTROL missing: SETPENCOLOR,SETPALETTE,
             (["pendown", "pd"],      ["evrd.ou","evrdou"],      [],            self.set_pen_position,   PEN_DOWN),\
             (["penup", "pu"],        ["erM.ou","erMou"],        [],            self.set_pen_position,   PEN_UP),\
@@ -80,8 +80,8 @@ class Commander:
             (["backward", "bk"],     ["ah", "ahvre"],           [NUM],         self.backward,           None),\
             (["left", "lt"],         ["wm", "wmale"],           [NUM],         self.left,               None),\
             (["right", "rt"],        ["im", "imine"],           [NUM],         self.right,              None),\
-            (["goto", "setpos"],     ["lnqvde"],                [LST],         self.go_to,              None),\
-            (["setxy"],              ["lnqvde"],                [NUM,NUM],     self.set_xy,             None),\
+            (["goto", "setpos"],     ["qbo.miqvM"],             [LST],         self.go_to,              None),\
+            (["setxy"],              ["lxvmt"],                 [NUM,NUM],     self.set_xy,             None),\
             (["setx"],               ["lrvhb"],                 [NUM],         self.set_x,              None),\
             (["sety"],               ["lavrK"],                 [NUM],         self.set_y,              None),\
             (["setheading", "seth"], ["lkivvN"],                [NUM],         self.set_heading,        None),\
@@ -90,7 +90,7 @@ class Commander:
             #TRANSMITTERS
             (["print", "pr"],        ["edfs", "ed"],            [TNG],         self.print_output,       None),\
             (["type"],               ["edfs.xmvd"],             [TNG],         self.type_output,        None),\
-            (["show"],               ["edfs.jvlmi"],            [TNG],         self.show_output,       None),\
+            (["show"],               ["edfs.gvlmi"],            [TNG],         self.show_output,       None),\
             (["random"],             ["egrl"],                  [NUM],         self.handle_math,        "random"),\
             (["sin"],                ["sinvs"],                 [NUM],         self.handle_math,        "sin"),\
             (["cos"],                ["qvsinvs"],               [NUM],         self.handle_math,        "cos"),\
@@ -102,10 +102,10 @@ class Commander:
             (["power"],              ["hzqe"],                  [NUM,NUM],     self.handle_math,        "power"),\
             (["first"],              ["rawvN"],                 [TNG],         self.first_and_last,       0),\
             (["firsts"],             ["rawvniM"],               [LST],         self.handle_firsts,        None),\
-            (["butfirsts"],          ["la.rawviM"],             [LST],         self.handle_butfirsts,     None),\
+            (["butfirsts"],          ["la.rawvniM"],            [LST],         self.handle_butfirsts,     None),\
             (["butfirst"],           ["la.rawvN"],              [TNG],         self.butfirst_and_butlast, (1,None)),\
             (["last"],               ["ahrvN"],                 [TNG],         self.first_and_last,       -1),\
-            (["lasts"],              ["ahrviM"],                [LST],         self.handle_lasts,         None),\
+            (["lasts"],              ["ahrvniM"],               [LST],         self.handle_lasts,         None),\
             (["butlasts"],           ["la.ahrvniM"],            [LST],         self.handle_butlasts,      None),\
             (["item"],               ["aibr"],                  [NUM, TNG],    self.handle_item,          None),\
             (["remove"],             ["slq"],                   [TNG, LST],    self.handle_remove,        None),\
@@ -123,19 +123,19 @@ class Commander:
             (["word"],               ["mile"],                  [WRD,WRD],     self.construct_word,       None),\
             (["list"],               ["rwime"],                 [TNG,TNG],     self.construct_list,       None),\
             (["sentence"],           ["mwfu"],                  [TNG,TNG],     self.construct_sentence,   None),\
-            (["fput"],               ["braw"],                  [TNG,LST],     self.handle_fput,          None),\
+            (["fput"],               ["wiM.braw"],              [TNG,LST],     self.handle_fput,          None),\
             (["pick"],               ["wlvF"],                  [TNG],         self.handle_pick,          None),\
             (["for"],                ["lkl"],                   [TNG,TNG],     self.for_loop,             None),\
-            (["lput"],               ["bsvF"],                  [TNG,LST],     self.handle_lput,          None),\
+            (["lput"],               ["wiM.bsvF"],              [TNG,LST],     self.handle_lput,          None),\
             (["if"],                 ["aM"],                    [TNG,LST],     self.handle_if,            None),\
             #QUERIES
             (["count"],              ["avrK"],                  [TNG],         self.handle_count,         None),\
             (["ascii"],              ["msfr.tv"],               [CHR],         self.handle_ascii,         None),\
-            (["rawascii"],           ["msfr.tv.jvlmi"],         [CHR],         self.handle_rawascii,      None),\
+            (["rawascii"],           ["msfr.tv.gvlmi"],         [CHR],         self.handle_rawascii,      None),\
             (["char"],               ["tv.msfr"],               [NUM],         self.handle_char,          None),\
-            (["member"],             ["btvk"],                  [TNG,TNG],     self.handle_member,        None),\
+            (["member"],             ["btvK"],                  [TNG,TNG],     self.handle_member,        None),\
             (["lowercase"],          ["avtivt.qunvt"],          [WRD],         self.handle_lowercase,     None),\
-            (["uppercase"],          ["avtivt.jdvlvt"],         [WRD],         self.handle_uppercase,     None),\
+            (["uppercase"],          ["avtivt.gdvlvt"],         [WRD],         self.handle_uppercase,     None),\
             #PREDICATES
             (["wordp", "word?"],     ["mile?"],                 [TNG],         self.is_word,              None),\
             (["listp", "list?"],     ["rwime?"],                [TNG],         self.is_list,              None),\
@@ -150,8 +150,9 @@ class Commander:
             (["make"],               ["qbo"],                   [],            None,                      None),\
             (["end"],                ["svF"],                   [],            None,                      None),\
             (["to"],                 ["lmd"],                   [],            None,                      None),\
-            (["load"],               ["upN"],                   [],            None,                      None),\
+            (["load"],               ["uoN"],                   [],            None,                      None),\
             (["stop"],               ["oxvr"],                  [],            None,                      None),\
+            (["help"],               ["ozre"],                  [],            self.handle_help,          None)\
             ]
             #(["circle"],             ["oigvl"]),\
             #(["dot"],                ["nqvde"]),\
@@ -164,6 +165,7 @@ class Commander:
                   ["too few %s", "fhvt mdi %s"]\
                 ]
 
+        self.COMMANDS = COMMANDS
         self.HH = HebrewHandler()
         self.movement_commands = {}
         self.commands = {}
@@ -1282,6 +1284,19 @@ class Commander:
         if mode == MODE_TYPE:
             print output,
         return True
+        
+    def handle_help(self):
+        for w in self.COMMANDS:
+           logo = w[0]
+           hebrew = w[1]
+           inputs = w[2]
+           function = w[3]
+           default_input = w[4]
+           for command in logo:
+                print command,
+           for hcommand in hebrew:
+                print self.HH.to_hebrew(hcommand),
+           print
         
 
 class App:

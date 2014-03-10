@@ -1,1 +1,18 @@
 py-turtle
+---------
+
+Yet another implementation of LOGO in python...
+
+This time, aiming to implement as much of UCBLogo commands as
+possible, plus support for Left-to-Right languages, starting 
+with Hebrew.
+
+Try:
+
+help (prints commands in English and Hebrew to the shell)
+
+repeat 36 [rt 10 repeat 4 [fd 100 rt 90]]
+
+load "tree.lgo
+tree 50
+

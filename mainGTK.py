@@ -221,7 +221,7 @@ class Commander:
     def set_output_label(self, label):
         self.output_label = label
         
-    def tokenize(self, text, debug=True):
+    def tokenize(self, text, debug=False):
         if debug: 
             print "Tokenizing", text
         text = self.incomplete_line + " " +str(text)
@@ -327,7 +327,7 @@ class Commander:
             print "TOKENS=", tokens
         return tokens, error        
         
-    def process_expression(self, words, namespace={}, parameter_only=False, debug=True):
+    def process_expression(self, words, namespace={}, parameter_only=False, debug=False):
         if debug:
             print "Process expression: Words=", words
         token = words[0]

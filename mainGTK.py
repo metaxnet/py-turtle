@@ -6,6 +6,8 @@ import pygtk
 pygtk.require('2.0')
 import gtk
 
+import pango
+
 MODE_WRAP = "WRAP"
 MODE_WINDOW = "WINDOW"
 MODE_FENCE = "FENCE"
@@ -59,8 +61,34 @@ class HebrewHandler:
         return u"".join(out)
 
 class Commander:
-    def __init__(self):
+    def __init__(self, app):
+        self.app = app
         COMMANDS = [
+            #CONSTRUCTORS missing: MDARRAY, COMBINE, REVERSE, GENSYM
+            (["word"],               ["mile"],                  [WRD,WRD],     self.construct_word,       None),\
+            (["list"],               ["rwime"],                 [TNG,TNG],     self.construct_list,       None),\
+            (["sentence"],           ["mwfu"],                  [TNG,TNG],     self.construct_sentence,   None),\
+            (["fput"],               ["wiM.braw"],              [TNG,LST],     self.handle_fput,          None),\
+            (["lput"],               ["wiM.bsvF"],              [TNG,LST],     self.handle_lput,          None),\
+            (["array"],              ["morK"],                  [NUM],         self.construct_array,      None),\
+            (["listtoarray"],        ["rwime.lmorK"],           [LST],         self.list_to_array,        None),\
+            (["arraytolist"],        ["morK.lrwime"],           [ARR],         self.array_to_list,        None),\
+            #SELECTORS missing: MDITEM
+            (["first"],              ["rawvN"],                 [TNG],         self.first_and_last,       0),\
+            (["firsts"],             ["rawvniM"],               [LST],         self.handle_firsts,        None),\
+            (["last"],               ["ahrvN"],                 [TNG],         self.first_and_last,       -1),\
+            (["lasts"],              ["ahrvniM"],               [LST],         self.handle_lasts,         None),\
+            (["butfirst", "bf"],     ["la.rawvN"],              [TNG],         self.butfirst_and_butlast, (1,None)),\
+            (["butfirsts", "bfs"],   ["la.rawvniM"],            [LST],         self.handle_butfirsts,     None),\
+            (["butlast"],            ["la.ahrvN"],              [TNG],         self.butfirst_and_butlast, (0,-1)),\
+            (["butlasts"],           ["la.ahrvniM"],            [LST],         self.handle_butlasts,      None),\
+            (["item"],               ["aibr"],                  [NUM, TNG],    self.handle_item,          None),\
+            (["remove"],             ["slq"],                   [TNG, LST],    self.handle_remove,        None),\
+            (["remdup"],             ["slq.kfvliM"],            [LST],         self.handle_remdup,        None),\
+            (["pick"],               ["wlvF"],                  [TNG],         self.handle_pick,          None),\
+            (["quoted"],             ["kmile"],                 [TNG],         self.handle_quoted,        None),\
+            #MUTATORS
+            (["setitem"],            ["qbo.aibr"],              [NUM, ARR, TNG], self.handle_set_item,    None),\
             #TURTLE AND WINDOW CONTROL missing FILL,LABEL,TEXTSCREEN,FULLSCREEN,SPLITSCREEN,SETSCRUNCH,REFRESH,NOREFRESH
             (["showturtle", "st"],   ["erae.xb","erx"],         [],            self.set_turtle_view,    TURTLE_SHOW),\
             (["hideturtle", "ht"],   ["estr.xb","esx"],         [],            self.set_turtle_view,    TURTLE_HIDE),\
@@ -69,6 +97,7 @@ class Commander:
             (["wrap"],               ["mxb.kdvr"],              [],            self.set_draw_mode,      MODE_WRAP),\
             (["window"],             ["mxb.hlvn"],              [],            self.set_draw_mode,      MODE_WINDOW),\
             (["fence"],              ["mxb.gdr"],               [],            self.set_draw_mode,      MODE_FENCE),\
+            (["label"],              ["tvvit"],                 [TNG],         self.handle_label,       None),\
             #PEN AND BACKGROUND CONTROL missing: SETPENCOLOR,SETPALETTE,
             (["pendown", "pd"],      ["evrd.ou","evrdou"],      [],            self.set_pen_position,   PEN_DOWN),\
             (["penup", "pu"],        ["erM.ou","erMou"],        [],            self.set_pen_position,   PEN_UP),\
@@ -100,18 +129,6 @@ class Commander:
             (["sqrt"],               ["wvrw"],                  [NUM],         self.handle_math,        "sqrt"),\
             (["remainder"],          ["warit"],                 [NUM,NUM],     self.handle_math,        "remainder"),\
             (["power"],              ["hzqe"],                  [NUM,NUM],     self.handle_math,        "power"),\
-            (["first"],              ["rawvN"],                 [TNG],         self.first_and_last,       0),\
-            (["firsts"],             ["rawvniM"],               [LST],         self.handle_firsts,        None),\
-            (["butfirsts"],          ["la.rawvniM"],            [LST],         self.handle_butfirsts,     None),\
-            (["butfirst"],           ["la.rawvN"],              [TNG],         self.butfirst_and_butlast, (1,None)),\
-            (["last"],               ["ahrvN"],                 [TNG],         self.first_and_last,       -1),\
-            (["lasts"],              ["ahrvniM"],               [LST],         self.handle_lasts,         None),\
-            (["butlasts"],           ["la.ahrvniM"],            [LST],         self.handle_butlasts,      None),\
-            (["item"],               ["aibr"],                  [NUM, TNG],    self.handle_item,          None),\
-            (["remove"],             ["slq"],                   [TNG, LST],    self.handle_remove,        None),\
-            (["remdup"],             ["slq.kfvliM"],            [LST],         self.handle_remdup,        None),\
-            (["butlast"],            ["la.ahrvN"],              [TNG],         self.butfirst_and_butlast, (0,-1)),\
-            (["quoted"],             ["kmile"],                 [TNG],         self.handle_quoted,        None),\
             #TURTLE MOTION QUERIES missing: SCRUNCH
             (["pos", "position"],    ["miqvM"],                 [],            self.handle_turtle_query,  "pos"),\
             (["xcor"],               ["rvhb"],                  [],            self.handle_turtle_query,  "xcor"),\
@@ -120,13 +137,7 @@ class Commander:
             (["towards"],            ["zvvit"],                 [TNG],         self.towards,              None),\
             #
             (["repeat"],             ["hzvr"],                  [NUM,TNG],     self.repeat_loop,          None),\
-            (["word"],               ["mile"],                  [WRD,WRD],     self.construct_word,       None),\
-            (["list"],               ["rwime"],                 [TNG,TNG],     self.construct_list,       None),\
-            (["sentence"],           ["mwfu"],                  [TNG,TNG],     self.construct_sentence,   None),\
-            (["fput"],               ["wiM.braw"],              [TNG,LST],     self.handle_fput,          None),\
-            (["pick"],               ["wlvF"],                  [TNG],         self.handle_pick,          None),\
             (["for"],                ["lkl"],                   [TNG,TNG],     self.for_loop,             None),\
-            (["lput"],               ["wiM.bsvF"],              [TNG,LST],     self.handle_lput,          None),\
             (["if"],                 ["aM"],                    [TNG,LST],     self.handle_if,            None),\
             #QUERIES
             (["count"],              ["avrK"],                  [TNG],         self.handle_count,         None),\
@@ -147,6 +158,7 @@ class Commander:
             (["substringp", "substring?"], ["mile.btvK"],       [TNG,TNG],     self.is_substring,         None),\
             (["numberp", "number?"], ["msfr?"],                 [TNG],         self.is_number,            None),\
             (["backslashedp", "backslashed?"], ["tv.buvh?"],    [CHR],         self.is_backslashed,       None),\
+            (["setpencolor"],        ["qbo.xbo.ou"],            [TNG],         self.set_pen_color,        None),\
             (["make"],               ["qbo"],                   [],            None,                      None),\
             (["end"],                ["svF"],                   [],            None,                      None),\
             (["to"],                 ["lmd"],                   [],            None,                      None),\
@@ -164,6 +176,10 @@ class Commander:
         ERRORS = [["too many %s", "ivtr mdi %s"],\
                   ["too few %s", "fhvt mdi %s"]\
                 ]
+        #                black    blue     green     cyan    red     magenta  yellow  white
+        self.BASIC_COLORS = [[0,0,0], [0,0,1], [0,1,0], [0,1,1],[1,0,0], [1,0,1], [1,1,0], [1,1,1]]
+        #                brown     tan      forest      aqua     salmon       purple     orange     grey
+        self.EXTRA_COLORS = [[0.5,0,0], [1,0.5,0.5], [0,0.5,0], [0,0,0.5],[1,0.5,0.5], [.5,0,.5], [1,0.5,0], [.5,.5,.5]]
 
         self.COMMANDS = COMMANDS
         self.HH = HebrewHandler()
@@ -201,22 +217,14 @@ class Commander:
         
         self.test()
     
-    def set_drawing_area(self, area):
-        self.area = area
-        self.style = self.area.get_style()
-        self.gc = self.area.window.new_gc(foreground=None, background=None, font=None, function=-1,\
-                                          fill=-1, tile=None, stipple=None, clip_mask=None, subwindow_mode=-1\
-                                          ,ts_x_origin=-1, ts_y_origin=-1, clip_x_origin=-1,clip_y_origin=-1,\
-                                          graphics_exposures=-1,line_width=-1, line_style=-1, cap_style=-1,\
-                                          join_style=-1)
 
     def set_output_label(self, label):
         self.output_label = label
         
-    def tokenize(self, text, debug=False):
+    def tokenize(self, text, debug=True):
         if debug: 
             print "Tokenizing", text
-        text = self.incomplete_line + " " +text
+        text = self.incomplete_line + " " +str(text)
         i = 0
         tokens = []
         token = ""
@@ -278,6 +286,7 @@ class Commander:
                 if not quotation_flag:
                     if token:
                         tokens.append(token)
+                        tokens.append(text[i])
                     else:
                         if text[i] in "<>=" and tokens[-1] in "<>=": #Each infix operator character is a word in itself, except the two-character sequences <= >= and <> 
                             tokens[-1] = tokens[-1] + text[i]
@@ -318,7 +327,7 @@ class Commander:
             print "TOKENS=", tokens
         return tokens, error        
         
-    def process_expression(self, words, namespace={}, parameter_only=False, debug=False):
+    def process_expression(self, words, namespace={}, parameter_only=False, debug=True):
         if debug:
             print "Process expression: Words=", words
         token = words[0]
@@ -370,6 +379,7 @@ class Commander:
             if debug:
                 print "New_tokens=", new_tokens, "Error=", error
             value, dummy, error = self.process_expression(new_tokens, namespace)
+        
         elif token[0] == "[" and token[-1] == "]":
             value = token
         else:
@@ -455,7 +465,8 @@ class Commander:
         startx, starty = self._get_turtle_position()
 
         if self.temp_image:
-            self.area.window.draw_image(self.gc, self.temp_image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
+            self.app.paste_turtle(self.temp_image, startx, starty)
+            #self.area.window.draw_image(self.gc, self.temp_image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
             self.temp_image = None
         unitext = text.decode("utf-8")
         words, error = self.tokenize(unitext)
@@ -640,16 +651,16 @@ class Commander:
     def is_word(self, thing):
         if not thing:
            return FALSE
-        elif thing[0] == "[" and thing[-1]=="]":
+        elif str(thing)[0] == "[" and str(thing)[-1]=="]":
            return False
+        elif str(thing)[0] == "{" and str(thing)[-1]=="}":
+           return False        
         return TRUE
 
     def is_list(self, thing):
-        if not thing:
-           return FALSE
-        elif thing[0] != "[" or thing[-1] != "]":
-           return FALSE
-        return TRUE
+        if thing and str(thing)[0] == "[" and str(thing)[-1] == "]":
+           return TRUE
+        return FALSE
 
     def is_array(self, thing):
         if not thing:
@@ -664,7 +675,7 @@ class Commander:
         return TRUE
 
     def is_backslashed(self, thing):
-        if thing and thing[0] == "\"":
+        if thing and thing[0] == "\\":
            return TRUE
         return FALSE
 
@@ -696,24 +707,24 @@ class Commander:
             return FALSE
         
     def handle_count(self, parameter):
-        if parameter[0] == "\"":
+        if self.is_word(parameter):
             chars, error = self._split_word(parameter)
             return len(chars)
-        elif parameter[0] == "[":
+        elif self.is_list(parameter):
             words, error = self._split_list(parameter)
             return len(words)
         else:
             return None, "can't split "+str(parameter)
 
     def handle_member(self, member, l):
-        if parameter[0] == "\"":
-            chars, error = self._split_word(parameter)
+        if self.is_word(member):
+            chars, error = self._split_word(member)
             if member in chars:
                 return TRUE
             else:
                 return FALSE
-        elif parameter[0] == "[":
-            words, error = self._split_list(parameter)
+        elif self.is_list(member):
+            words, error = self._split_list(member)
             if member in words:
                 return TRUE
             else:
@@ -776,10 +787,10 @@ class Commander:
         return self.butfirst_and_butlast([0,-1], t)
         
     def first_and_last(self, place, thing):
-        if thing[0] == "\"":
+        if self.is_word(thing):
             chars, error = self._split_word(thing)
             return "\"" + chars[place]
-        elif thing[0] == "[":
+        elif self.is_list(thing):
             words, error = self._split_list(thing)
             return words[place]
         else:
@@ -787,20 +798,20 @@ class Commander:
 
     def butfirst_and_butlast(self, places, thing):
         splace, eplace = places
-        if thing[0] == "\"":
+        if self.is_word(thing):
             chars, error = self._split_word(thing)
             return "\"" + "".join(chars[splace:eplace])
-        elif thing[0] == "[":
+        elif self.is_list(thing):
             words, error = self._split_list(thing)
             return "["+ " ".join(words[splace:eplace]) + "]"
         else:
             return None, "can't split "+str(thing)
 
     def handle_pick(self, parameter):
-        if parameter[0] == "\"":
+        if self.is_word(parameter):
             chars, error = self._split_word(parameter)
             return "\"" + random.choice(chars), ""
-        elif parameter[0] == "[":
+        elif self.is_list(parameter):
             words, error = self._split_list(parameter)
             return random.choice(words), ""
         else:
@@ -820,23 +831,47 @@ class Commander:
     #    import random
     #    return int(random.random(number))
 
-    def handle_fput(self, tng, lst):
-        if tng[0] == "\"":
-            item = tng[1:]
+    def handle_set_item(self, num, array, thing):
+        pass
+        
+    def _parse_word(self, word):
+        w = str(word)
+        if w and w[0] == "\"":
+            return w[1:]
+        elif w and w[-2:] == ".0":
+            return w[:-2]
         else:
-            item = tng
-        return "[" + tng + " " + lst[1:] + "]"
+            return w
 
-    def handle_lput(self, tng, lst):
-        if tng[0] == "\"":
-            item = tng[1:]
+    def handle_fput(self, thing, l):
+        if self.is_word(thing):
+            item = self._parse_word(thing)
         else:
-            item = tng
-        return "[" +  lst[:-1] + " " + tng +"]"
+            item = thing
+
+        print item, l
+
+        if self.is_word(l) and len(item) == 1:
+             return self.construct_word(item, l)
+        elif self.is_list(l):
+            return "[" + item  + " " + l[1:-1] +"]"
+        return "ERROR"
+
+    def handle_lput(self, thing, l):
+        if self.is_word(thing):
+            item = self._parse_word(thing)
+        else:
+            item = thing
+
+        if self.is_word(l) and len(item) == 1:
+             return self.construct_word(l, item)
+        elif self.is_list(l):
+            return "[" +  l[1:-1] + " " + item +"]"
+        return "ERROR"
     
     def construct_word(self, parameter1, parameter2):
         parameters = [parameter1, parameter2]
-        return "\"" + ("".join([p[1:] for p in parameters]))
+        return "\"" + ("".join([self._parse_word(p) for p in parameters]))
 
     def construct_list(self, parameter1, parameter2 = None):
         if parameter2 == None:
@@ -845,9 +880,9 @@ class Commander:
             parameters = [parameter1, parameter2]
             l = []
             for p in parameters:
-                if p[0] == "\"":
-                    l.append(p[1:])
-                elif p[0] == "[" and p[-1] == "]":
+                if self.is_word(p):
+                    l.append(self._parse_word(p))
+                elif self.is_list(p):
                     l.append(p)
         return "[" + " ".join(l) + "]"
         
@@ -855,19 +890,43 @@ class Commander:
         parameters = [parameter1, parameter2]
         l = []
         for p in parameters:
-            if p[0] == "\"":
-                l.append(p[1:])
-            elif p[0] == "[" and p[-1] == "]":
+            if self.is_word(p):
+                l.append(self._parse_word(p))
+            elif self.is_list(p):
                 l.append(p[1:-1])
-        return "[" + " ".join(l) + "]"        
+        return "[" + " ".join(l) + "]"
+        
+    def construct_array(self, parameter1, parameter2=None):
+        size = parameter1
+        if not parameter2:
+            origin = 1
+        else:
+            origin = parameter2
+        if origin == 1:
+            end_bracket = "}"
+        else:
+            end_bracket = "}@"+str(parameter2)
+        return "{"+" ".join("[]" * size) + end_bracket
+        
+    def list_to_array(self, l):
+        return "{"+l[1:-1]+"}"
+
+    def array_to_list(self, a):
+        if a[-1] == "}":
+            end = -1
+        else:
+            items = a.split("}")
+            temp = "}".join(items[-1])
+            end = len(temp)
+        return "["+a[1:end]+"]"
             
     def clear_screen(self):
-        self.area.window.clear()
+        self.app.clear_screen()
         self.home()
         self.refresh_turtle_flag = True
 
     def clean(self):
-        self.area.window.clear()
+        self.app.clear_screen()
         self.refresh_turtle_flag = True
 
     def test(self):
@@ -1067,7 +1126,8 @@ class Commander:
         return True
 
     def _draw(self, sx, sy, ex, ey):
-        self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
+        self.app.draw_line(sx, sy, ex, ey)
+        #self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
 
     def forward(self, distance):
         return self._move_distance(distance, -1)
@@ -1122,8 +1182,7 @@ class Commander:
         elif query == "ypos":
             return y
         elif query == "pos":
-            return "["+str(x)+" "\
-                      +str(y)+"]"
+            return "["+str(x)+" "+str(y)+"]"
         elif query == "heading":
             return self.turtle_heading
 
@@ -1140,12 +1199,22 @@ class Commander:
     def set_pen_mode(self, mode):
         self.pen_position = PEN_DOWN
         self.pen_mode = mode
-        if mode == PEN_ERASE:
-            self.gc.function = gtk.gdk.CLEAR
-        elif mode == PEN_REVERSE:
-            self.gc.function = gtk.gdk.INVERT
+        self.app.set_pen_mode(mode)
+        return True
+
+    def set_pen_color(self, parameter):
+        if self.is_list(parameter) == TRUE:
+            tokens, error = self.tokenize(parameter[1:-1])
+            r, tokens, error = self.process_expression(tokens[:], namespace)
+            g, tokens, error = self.process_expression(tokens[:], namespace)
+            b, tokens, error = self.process_expression(tokens[:], namespace)
         else:
-            self.gc.function = gtk.gdk.SET
+            rgb = self.BASIC_COLORS[int(parameter)]
+            r = rgb[0] * 256.0
+            g = rgb[1] * 256.0
+            b = rgb[2] * 256.0
+        self.app.set_foreground_color(r, g, b)
+        self.pen_color = parameter
         return True
 
     def set_draw_mode(self, mode):
@@ -1177,7 +1246,7 @@ class Commander:
         return self.set_xy(x, y)        
 
     def set_pen_size(self, size):
-        self.gc.line_width = size
+        self.app.set_line_width(size)
         return
 
     def repeat_loop(self, times, loop_body, namespace):
@@ -1233,7 +1302,7 @@ class Commander:
     def hide_turtle(self):
         startx, starty = self._get_turtle_position()
         if self.temp_image:
-            self.area.window.draw_image(self.gc, self.temp_image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
+            self.app.hide_turtle(self.temp_image, startx, starty)
             self.temp_image = None
         else:
             print "Can't hide turtle"
@@ -1248,10 +1317,21 @@ class Commander:
         toe1 = (int(startx - toe1_dirx * 6.0), int(starty - toe1_diry * 6.0))
         toe2 = (int(startx - toe2_dirx * 6.0), int(starty - toe2_diry * 6.0))
         if self._is_visible((startx, starty)):
-            self.temp_image = self.area.window.get_image(int(startx - 10.0), int(starty- 10.0), 20, 20) 
+            self.temp_image = self.app.get_turtle_image(startx, starty)
+            #self.area.window.get_image(int(startx - 10.0), int(starty- 10.0), 20, 20) 
         else:
             self.temp_image = None
-        self.area.window.draw_polygon(self.gc, True, (head, toe1, toe2))
+        print "TURTLE", (head, toe1, toe2)
+        self.app.draw_turtle(head, toe1, toe2)
+        
+    def handle_label(self, text):
+        startx, starty = self._get_turtle_position()
+        if self.is_word(text):
+           text = text[1:]
+        elif self.is_list(text):
+           text = text[1:-1]
+
+        self.app.draw_label(text, startx, starty)
         
     def _get_turtle_position(self):
         #print "TP", self.turtle_xposition, self.turtle_yposition
@@ -1270,19 +1350,24 @@ class Commander:
         #Prints the input or inputs like PRINT, except that no newline character is printed at the end and multiple inputs are not separated by spaces.
         return self.print_output(output, mode = MODE_TYPE)
         
-    def print_output(self, output, mode=MODE_PRINT):
-        print "OUTPUT=", output
-        if type(output) == type(0) or type(output) == type(0.0):
-            output = str(output)
-            if output and output[-2:] == ".0":
-                output = output[:-2]
-        elif output and output[0] == "\"":
-            output = output[1:]
-        elif output and output[0] == "[" and output[-1] == "]" and (mode != MODE_SHOW):
-            output = output[1:-1]
-        self.output_label.set_text(str(output))
+    def print_output(self, output, mode=MODE_PRINT, namespace={}):
+        #print "OUTPUT=", output
+        words, error = self.tokenize(output)
+        out, words, error = self.process_expression(words[:], namespace)
+        
+        #if type(out) == type(0) or type(out) == type(0.0):
+        #    out = str(out)
+        #    if out and out[-2:] == ".0":
+        #        out = out[:-2]
+        #elif self.is_word(out):
+        #    out = out[1:]
+        if self.is_word(out):
+            out = self._parse_word(out)
+        elif self.is_list(out) and (mode != MODE_SHOW):
+            out = out[1:-1]
+        self.output_label.set_text(str(out))
         if mode == MODE_TYPE:
-            print output,
+            print out,
         return True
         
     def handle_help(self):
@@ -1301,7 +1386,7 @@ class Commander:
 
 class App:
     def __init__(self):
-        self.commander = Commander()
+        self.commander = Commander(self)
         self.window = gtk.Window()
         self.window.connect("destroy", self.destroy)
         vbox = gtk.VBox()
@@ -1315,21 +1400,34 @@ class App:
         self.textview = gtk.TextView()
         self.textview.set_buffer(self.textbuffer)
         self.textview.set_editable(False)
+        self.vpaned = gtk.VPaned()
+        self.vpaned.add1(self.scrolled)
+        self.vpaned.add2(self.textview)
         self.label = gtk.Label()
         self.entry = gtk.Entry()
         self.entry.connect("activate", self.handle_command)
         self.entry.connect("key-press-event", self.handle_keypress)
-        vbox.pack_start(self.scrolled, 0,0,False)
-        vbox.pack_start(self.textview, 0,0,False)
+        #vbox.pack_start(self.scrolled, 0,0,False)
+        #vbox.pack_start(self.textview, 0,0,False)
+        vbox.pack_start(self.vpaned, 0,0,False)
         vbox.pack_start(self.label, 0,0,False)
         vbox.pack_start(self.entry, 0,0,False)
         self.window.add(vbox)
         self.window.show_all()
-        self.commander.set_drawing_area(self.area)
+        self.set_drawing_area(self.area)
         self.commander.set_output_label(self.label)
         self.history_index = 0
         self.history_mode = False
         self.history = []
+        
+    def set_drawing_area(self, area):
+        self.area = area
+        self.style = self.area.get_style()
+        self.gc = self.area.window.new_gc(foreground=None, background=None, font=None, function=-1,\
+                                          fill=-1, tile=None, stipple=None, clip_mask=None, subwindow_mode=-1\
+                                          ,ts_x_origin=-1, ts_y_origin=-1, clip_x_origin=-1,clip_y_origin=-1,\
+                                          graphics_exposures=-1,line_width=-1, line_style=-1, cap_style=-1,\
+                                          join_style=-1)
 
     def handle_keypress(self, widget=None, event=None):
         if event.keyval == 65362: #up
@@ -1363,7 +1461,46 @@ class App:
             self.history_index = len(self.history) - 1
         self.history_mode = False
         widget.grab_focus()
+
+    def clear_screen(self):
+        self.area.window.clear()
         
+    def draw_label(self, text, x, y):
+        context = self.area.get_pango_context()
+        layout = pango.Layout(context)
+        layout.set_text(text)
+        self.area.window.draw_layout(self.gc, int(x), int(y), layout)        
+
+    def draw_turtle(self, head, toe1, toe2):
+        self.area.window.draw_polygon(self.gc, True, (head, toe1, toe2))
+
+    def hide_turtle(self, image, startx, starty):
+        self.area.window.draw_image(self.gc, image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
+        
+    def paste_turtle(self, image, startx, starty):
+        self.area.window.draw_image(self.gc, image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
+        
+    def get_turtle_image(self, startx, starty):
+        return self.area.window.get_image(int(startx - 10.0), int(starty- 10.0), 20, 20) 
+        
+    def set_line_width(self, size):
+        self.gc.line_width = size
+
+    def set_foreground_color(self, r, g, b):
+        color = gtk.gdk.Color(r, g, b)
+        self.gc.set_rgb_fg_color(color) #self.gc.set_foreground(color)
+        
+    def set_pen_mode(self, mode):
+        if mode == PEN_ERASE:
+            self.gc.function = gtk.gdk.CLEAR
+        elif mode == PEN_REVERSE:
+            self.gc.function = gtk.gdk.INVERT
+        else:
+            self.gc.function = gtk.gdk.SET
+        
+    def draw_line(self, sx, sy, ex, ey):
+        self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
+
     def destroy(self, event=None):
         gtk.main_quit()
 

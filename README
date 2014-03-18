@@ -14,5 +14,8 @@ help (prints commands in English and Hebrew to the shell)
 repeat 36 [rt 10 repeat 4 [fd 100 rt 90]]
 
 load "tree.lgo
-tree 50
+tree 50 (from http://mckoss.com/logo/funprog.htm)
+
+load "15words.lgo (from http://www.mathcats.com/gallery/15wordcontest.html)
+
 

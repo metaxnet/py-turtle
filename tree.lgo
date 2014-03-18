@@ -1,7 +1,13 @@
 to tree :size
-  if (:size < 5) [stop]
+  ;
+  if (:size < 5) [
+  ;stop
+     stop
+  ;done
+  ]
   fd :size
   lt 30 tree (:size * 0.7)
   rt 60 tree (:size * 0.7)
   lt 30 bk :size
+  ;
 end

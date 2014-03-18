@@ -67,7 +67,7 @@ class Commander:
             #CONSTRUCTORS missing: MDARRAY, COMBINE, REVERSE, GENSYM
             (["word"],               ["mile"],                  [WRD,WRD],     self.construct_word,       None),\
             (["list"],               ["rwime"],                 [TNG,TNG],     self.construct_list,       None),\
-            (["sentence"],           ["mwfu"],                  [TNG,TNG],     self.construct_sentence,   None),\
+            (["sentence", "se"],     ["mwfu"],                  [TNG,TNG],     self.construct_sentence,   None),\
             (["fput"],               ["wiM.braw"],              [TNG,LST],     self.handle_fput,          None),\
             (["lput"],               ["wiM.bsvF"],              [TNG,LST],     self.handle_lput,          None),\
             (["array"],              ["morK"],                  [NUM],         self.construct_array,      None),\
@@ -138,7 +138,9 @@ class Commander:
             #
             (["repeat"],             ["hzvr"],                  [NUM,TNG],     self.repeat_loop,          None),\
             (["for"],                ["lkl"],                   [TNG,TNG],     self.for_loop,             None),\
-            (["if"],                 ["aM"],                    [TNG,LST],     self.handle_if,            None),\
+            (["if"],                 ["aM"],                    [TRU,LST],     self.handle_if,            None),\
+            (["ifelse"],             ["aM.vahrt"],              [TRU,LST,LST], self.handle_if_else,       None),\
+            (["do.while"],           ["owe.kl.ovd"],            [LST,TRU],     self.handle_do_while,      None),\
             #QUERIES
             (["count"],              ["avrK"],                  [TNG],         self.handle_count,         None),\
             (["ascii"],              ["msfr.tv"],               [CHR],         self.handle_ascii,         None),\
@@ -157,13 +159,17 @@ class Commander:
             (["beforep", "before?"], ["lfni"],                  [WRD,WRD],     self.is_before,            None),\
             (["substringp", "substring?"], ["mile.btvK"],       [TNG,TNG],     self.is_substring,         None),\
             (["numberp", "number?"], ["msfr?"],                 [TNG],         self.is_number,            None),\
+            (["memberp", "member?"], ["btvK?"],                 [TNG,TNG],     self.is_member,            None),\
             (["backslashedp", "backslashed?"], ["tv.buvh?"],    [CHR],         self.is_backslashed,       None),\
-            (["setpencolor"],        ["qbo.xbo.ou"],            [TNG],         self.set_pen_color,        None),\
+            (["setpencolor", "setpc"], ["qbo.xbo.ou"],          [TNG],         self.set_pen_color,        None),\
+            (["setscreencolor", "setsc"], ["qbo.xbo.msK"],      [TNG],         self.set_screen_color,     None),\
+            (["and", "AND"],         ["gM"],                    [TRU,TRU],     self.handle_logical,       "and"),\
             (["make"],               ["qbo"],                   [],            None,                      None),\
             (["end"],                ["svF"],                   [],            None,                      None),\
             (["to"],                 ["lmd"],                   [],            None,                      None),\
             (["load"],               ["uoN"],                   [],            None,                      None),\
             (["stop"],               ["oxvr"],                  [],            None,                      None),\
+            (["output"],             ["ehzr"],                  [TNG],         None,                      None),\
             (["help"],               ["ozre"],                  [],            self.handle_help,          None)\
             ]
             #(["circle"],             ["oigvl"]),\
@@ -191,13 +197,13 @@ class Commander:
         self.turtle_home_position = [SCREEN_WIDTH/2 + 0.0, SCREEN_HEIGHT/2 + 0.0]
         self.turtle_position = [0, 0]
         self.home()
-        self.turtle_heading = 0
+        self.turtle_heading = 180
         
         self.refresh_turtle_flag = False
         self.show_turtle_flag = True
         self.pen_position = PEN_DOWN
         self.pen_mode = PEN_PAINT
-        self.draw_mode = MODE_WINDOW
+        self.draw_mode = MODE_WRAP
         self.temp_image = None
         self.command_loop_level = 0
         self.current_proc_name = False
@@ -217,14 +223,14 @@ class Commander:
         
         self.test()
     
-
     def set_output_label(self, label):
         self.output_label = label
         
     def tokenize(self, text, debug=False):
+        text = self.incomplete_line + "\n" +str(text) #PROBLEM WITH COMMENTED LINES!
         if debug: 
             print "Tokenizing", text
-        text = self.incomplete_line + " " +str(text)
+            print "self.incomplete_line = ", self.incomplete_line
         i = 0
         tokens = []
         token = ""
@@ -277,13 +283,32 @@ class Commander:
                 if token:
                     tokens.append(token)
                 token = brackets_type[0]
+                
+            elif text[i] == "{": 
+                quotation_flag = False #After a quotation mark outside square brackets, a word is delimited by a space, a square bracket, or a parenthesis.
+                brackets_level = 1
+                brackets_type = "{}"
+                if token:
+                    tokens.append(token)
+                token = brackets_type[0]
+                
+            elif text[i] == ";":
+                tokens.append(token)
+                token = ""
+                if "\n" in text[i:]:
+                    comment_end = text[i:].index("\n")
+                    next = text[:i] + text[i + comment_end:]
+                else:
+                    text = text[:i]
             
             elif text[i] == "\"": 
                 quotation_flag = True # After a quotation mark outside square brackets, a word is delimited by a space, a square bracket, or a parenthesis.
                 token = token + text[i]
             
             elif text[i] in "+-*/<>=": #A word not after a quotation mark or inside square brackets is delimited by a space, a bracket, a parenthesis, or an infix operator +-*/=<>. 
-                if not quotation_flag:
+                if quotation_flag or brackets_level:
+                    token = token + text[i]                        
+                else:
                     if token:
                         tokens.append(token)
                         tokens.append(text[i])
@@ -293,33 +318,27 @@ class Commander:
                         else:
                             tokens.append(text[i])
                     token=""
-                else:
-                    token = token + text[i]
             
-            elif text[i] == " ":
+            elif text[i] in (" ", "\n"):
                 quotation_flag = False # After a quotation mark outside square brackets, a word is delimited by a space, a square bracket, or a parenthesis.
                 tokens.append(token)
                 token = ""
             
             else:
                 token = token + text[i]
+
             i = i + 1
 
         if token:
             tokens.append(token)
 
-        if debug:
-            print tokens, token, brackets_level
-
         if brackets_level > 0:
-            #error = self.HH.to_hebrew("ivtr mdi " + brackets_type[0])
             error = 0 #OPEN_BRACKETS_ERROR
             self.incomplete_line = text
         else:
             self.incomplete_line = ""
 
         if brackets_level < 0:
-            #error = self.HH.to_hebrew("ivtr mdi " + brackets_type[1])
             error = 1 #TOO_MANY_CLOSING_BRACKETS_ERROR
 
         tokens = [x for x in tokens if x]
@@ -327,7 +346,7 @@ class Commander:
             print "TOKENS=", tokens
         return tokens, error        
         
-    def process_expression(self, words, namespace={}, parameter_only=False, debug=False):
+    def process_expression(self, words, namespace={}, parameter_only=False, greedy = False, debug=False):
         if debug:
             print "Process expression: Words=", words
         token = words[0]
@@ -335,41 +354,60 @@ class Commander:
         error = ""
         value = None
         if debug:
-            print "Processing expression: Token", token, "Namespace", namespace
-        if token in self.commands: 
+            keys = namespace.keys()
+            keys.sort()
+            print "Processing expression: Token", token, "Namespace", keys
+        
+        if token == "repcount" and "repcount" in namespace:
+            value = namespace['repcount']
+
+        elif token in namespace:
+            if debug: 
+                print "Handling proc:", namespace[token]
+            local_namespace = copy.deepcopy(namespace)
+            for variable in namespace[token][0]:
+                parameter, words, error = self.process_expression(words, local_namespace)
+                local_namespace[variable[1:]] = parameter
+            if debug: 
+                print local_namespace
+            all_ok = True
+            for line in namespace[token][1]:
+                if all_ok:
+                    all_ok = self.handle_command(line, local_namespace)
+                else:
+                    break
+            all_ok = True
+
+            
+        elif token in self.commands: 
             token = self.commands[token][0]
             inputs = self.commands[token][1]
             function = self.commands[token][2]
             default_input = self.commands[token][3]
-            if len(inputs) == 0:
-                if default_input != None:
-                    value = function(default_input)
-                else:
-                    value = function()
-                    
-            elif len(inputs) == 1:
-                parameter, words, error = self.process_expression(words, namespace, parameter_only=True)                    
-                if default_input != None:
-                    value = function(default_input, parameter)
-                else:
-                    value = function(parameter)
-                
-            elif len(inputs) == 2:
-                parameter1, words, error = self.process_expression(words, namespace, parameter_only=True)
-                parameter2, words, error = self.process_expression(words, namespace, parameter_only=True)                    
-                if default_input != None:
-                    value = function(default_input, parameter1, parameter2)
-                else:
-                    value = function(parameter1, parameter2)
+            if greedy:
+                parameters = []
+                while words:
+                    parameter, words, error = self.process_expression(words, namespace, parameter_only=True)                    
+                    parameters.append(parameter)
+            else:
+                parameters = []
+                for i in range(len(inputs)):
+                    parameter, words, error = self.process_expression(words, namespace, parameter_only=True)
+                    parameters.append(parameter)
 
-        elif token == "repcount" and "repcount" in namespace:
-            value = namespace['repcount']
+            if default_input != None:
+                value = function(default_input, parameters, namespace)
+            else:
+                value = function(parameters, namespace)
 
         elif token[0] == ":":
             if token[1:] in namespace:
                 value = namespace[token[1:]]
             else:
                 error = self.HH.to_hebrew("ani la ivdo me ze ")+token
+                keys = namespace.keys()
+                keys.sort()
+                print "I know only", keys
 
         elif token[0] == "\"":
             value = token
@@ -378,12 +416,22 @@ class Commander:
             new_tokens, error = self.tokenize(token[1:-1])
             if debug:
                 print "New_tokens=", new_tokens, "Error=", error
-            value, dummy, error = self.process_expression(new_tokens, namespace)
+            value, dummy, error = self.process_expression(new_tokens, namespace, greedy=True)
         
         elif token[0] == "[" and token[-1] == "]":
             value = token
+            
+        elif token[0] == "{" and token[-1] == "}":
+            value = token
+
+        elif token[0] == "{" and ("}@" in token):
+            value = token
+        
         else:
-            value = float(token)           
+            try:
+                value = float(token)           
+            except:
+                value = 0.0
             
         if words and words[0] in "+-/*%" and not parameter_only:
             operator = words[0]
@@ -423,8 +471,7 @@ class Commander:
         if debug:
             print "Expression Value=", value, "Words=", words, "Error=", error
         return value, words, error
-        
-        
+                
     def handle_text(self, text, namespace={}):
         # missing end brackets/parentheses should cause continuation line
         lines = text.split("\n")
@@ -451,7 +498,7 @@ class Commander:
                 if not wait_for_complete_line_flag:
                     self.handle_command(command, namespace)
                 
-    def handle_command(self, text, namespace={}, debug=False):
+    def handle_command(self, text, namespace={}, debug=True):
         all_ok = True
         if not text:
             return all_ok
@@ -468,20 +515,22 @@ class Commander:
             self.app.paste_turtle(self.temp_image, startx, starty)
             #self.area.window.draw_image(self.gc, self.temp_image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
             self.temp_image = None
+        #print "TEXT={"+text+"}"
         unitext = text.decode("utf-8")
-        words, error = self.tokenize(unitext)
-        if error == 0:
-           return True
+        if self.current_proc_name:
+            namespace = self.handle_to(unitext, namespace)
+            words = []
+        else:
+            words, error = self.tokenize(unitext)
+            if error == 0:
+                return True
 
         while words:
             if debug: 
-                print "WWWords=", words, error
+                print "Words=", words, error
             while not words[0]:
                 words = words[1:]
-            if self.current_proc_name:
-                namespace = self.handle_to(words, namespace)
-                words = []
-            elif words[0] in namespace:
+            if words[0] in namespace:
                 if debug: 
                     print "Handling proc:", namespace[words[0]]
                 command = words[0]
@@ -497,6 +546,7 @@ class Commander:
                     if all_ok:
                         all_ok = self.handle_command(line, local_namespace)
                     else:
+                        print "Breaking!"
                         break
                 all_ok = True
                         
@@ -504,14 +554,20 @@ class Commander:
                 if debug: 
                     print "Process command:", words[0]
                 command = words[0]
+                words = words[1:]
                 token = self.commands[command][0]
                 inputs = self.commands[token][1]
                 function = self.commands[token][2]
                 default_input = self.commands[token][3]
                 
                 if token == "for":
-                    self.for_loop(words[1], words[2], namespace)
-                    words = words[3:]
+                    self.for_loop([words[0], words[1]], namespace)
+                    words = words[2:]
+                    
+                elif token == "output":
+                    print "Outputting:"
+                    out, words, error =  self.process_expression(words, namespace)
+                    return out
 
                 elif token == "stop":
                     words = []
@@ -519,57 +575,56 @@ class Commander:
                     return False
                     
                 elif token == "load":
-                    filename, words, error =  self.process_expression(words[1:], namespace)
+                    filename, words, error =  self.process_expression(words, namespace)
                     f = open(filename[1:], "rb")
                     # REPLACE THIS WITH HANDLE_TEXT and treat open brackets as indication of line continuation
                     lines = [l.replace("\r", "") for l in f.readlines()]
                     for line in lines:
                         all_ok = self.handle_command(line[:-1])
 
+                elif token == "do.while":
+                    condition = words[1]
+                    block = words[0]
+                    self.handle_do_while([condition, block], namespace)
+                    words = words[2:]
+
                 elif token == "repeat":
-                    times, words, error = self.process_expression(words[1:], namespace)
+                    times, words, error = self.process_expression(words, namespace)
                     loop_body = words[0][1:-1]
-                    self.repeat_loop(int(times), loop_body, namespace)
+                    self.repeat_loop([int(times), loop_body], namespace)
                     words = words[1:]
 
                 elif token == "to":
-                    namespace = self.handle_to(words[1:], namespace)
+                    namespace = self.handle_to(words, namespace)
                     words = []
                     
                 elif token == "make":
-                    name, words, error = self.process_expression(words[1:], namespace)
-                    value, words, error = self.process_expression(words[:], namespace)                    
-                    namespace["\""+name] = value
+                    name, words, error = self.process_expression(words[:], namespace)
+                    value, words, error = self.process_expression(words[:], namespace) 
+                    namespace[name[1:]] = value
                     words = []                
 
-                elif len(inputs) == 0:
-                    if default_input != None:
-                        all_ok = function(default_input)
-                    else:
-                        all_ok = function()
-                    words = words[1:]
-                    
-                elif len(inputs) == 1:
-                    parameter, words, error = self.process_expression(words[1:], namespace)                    
-                    if default_input != None:
-                        all_ok = function(default_input, parameter)
-                    else:
-                        all_ok = function(parameter)
-                
-                elif len(inputs) == 2:
-                    parameter1, words, error = self.process_expression(words[1:], namespace)
-                    parameter2, words, error = self.process_expression(words[:], namespace)                    
-                    if default_input != None:
-                        all_ok = function(default_input, parameter1, parameter2)
-                    else:
-                        all_ok = function(parameter1, parameter2)
-                
+                elif token == "setitem":
+                    index, words, error = self.process_expression(words[:], namespace)
+                    name = words[0]
+                    array, words, error = self.process_expression(words[:], namespace) 
+                    value, words, error = self.process_expression(words[:], namespace) 
+                    namespace[name[1:]] = self.handle_set_item([index, array, value])
+                    words = []             
+
                 else:
-                    if debug: 
-                        print command, "not implemented yet"
+                    parameters = []
+                    for i in range(len(inputs)):
+                        parameter, words, error = self.process_expression(words[:], namespace)                    
+                        parameters.append(parameter)
+                        
+                    if default_input != None:
+                        all_ok = function(default_input, parameters)
+                    else:
+                        all_ok = function(parameters)
             else:
                 if debug: 
-                    print "No command found in {%s}" % (words[0])
+                    print "No command found in {%s}" % command
                 words = []
             if debug: 
                 print "ALL_OK=", all_ok
@@ -584,30 +639,43 @@ class Commander:
             
         return all_ok
 
-    def handle_math(self, token, parameter):
+    def handle_logical(self, token, parameters, namespace={}):
+        if token == "not":
+            bool = not (parameters[0] == TRUE)
+        elif token == "and":
+            bool = (parameters[0] == TRUE) and (parameters[1] == TRUE)
+        elif token == "or":
+            bool = (parameters[0] == TRUE) or (parameters[1] == TRUE)
+            
+        if bool:
+            return TRUE
+        else:
+            return FALSE
+
+    def handle_math(self, token, parameters, namespace={}):
         if token == "sin":
-             value = math.sin(math.radians(parameter))
+             value = math.sin(math.radians(parameters[0]))
         elif token == "cos":
-             value = math.cos(math.radians(parameter))
+             value = math.cos(math.radians(parameters[0]))
         elif token == "tan":
-             value = math.atan(math.radians(parameter))
+             value = math.atan(math.radians(parameters[0]))
         elif token == "arctan":
-             value = math.degrees(math.atan(parameter))
+             value = math.degrees(math.atan(parameters[0]))
         elif token == "random":
-             value = int(random.random() * int(parameter))
+             value = int(random.random() * int(parameters[0]))
         elif token == "int":
-             value = int(parameter)
+             value = int(parameters[0])
         elif token == "minus":
-             value = parameter * -1
+             value = parameters[0] * -1
         elif token == "sqrt":
-             value = math.sqrt(parameter)
+             value = math.sqrt(parameters[0])
         elif token == "remainder":
-             value = parameter[0] % parameter[1]
+             value = parameters[0] % parameters[1]
         elif token == "power":
-             value = parameter[0] ** parameter[1]
+             value = parameters[0] ** parameters[1]
         return value
 
-    def _split_word(self, parameter):
+    def _split_word(self, parameter, namespace={}):
         if parameter[0] !="\"":
             return None, parameter + "is not a word"
         chars = []
@@ -620,35 +688,125 @@ class Commander:
             i = i + 1
         return chars, ""
 
-    def _split_list(self, parameter):
-        words, error = self.tokenize(parameter[1:-1])
-        return words, error 
+    def _split_list(self, text, namespace={}):
+        #Within square brackets, words are delimited only by spaces and square brackets.
+        #words, error = self.tokenize(parameter[1:-1])
+        brackets = 0
+        words = []
+        i = 0
+        word = ""
+        error = ""
+        if text[0] == "[" and text[-1] == "]":
+            text = text[1:-1]
         
-    def handle_if(self, condition, block):
+        while i < len(text):
+            if brackets:
+                word = word + text[i]
+            elif text[i] == "[":
+                brackets = brackets + 1
+                words.append(word)
+                word = text[i]
+            elif text[i] == "]":
+                brackets = brackets - 1
+                words.append(word+text[i])
+                word = []
+            elif text[i] == " ":
+                words.append(word)
+                word = ""
+            else:
+                word = word + text[i]
+            i = i + 1
+        if word:
+           words.append(word)
+        return words, error 
+
+    def _split_array(self, text, namespace={}):
+        #Within square brackets, words are delimited only by spaces and square brackets.
+        #words, error = self.tokenize(parameter[1:-1])
+        brackets = 0
+        words = []
+        i = 0
+        word = ""
+        error = ""
+        if text[0] == "{" and text[-1] == "}":
+            text = text[1:-1]
+            origin = 1
+        elif text[0] == "{" and ("}@" in text):
+            items = text[1:].split("}@")
+            text = "}@".join(items[:-1])
+            origin = items[-1]
+        
+        while i < len(text):
+            if brackets and text[i] == "]":
+                brackets = brackets - 1
+                words.append(word+text[i])
+                word = []
+            elif brackets:
+                word = word + text[i]
+            elif text[i] == "[":
+                brackets = brackets + 1
+                words.append(word)
+                word = text[i]
+            elif text[i] == " ":
+                words.append(word)
+                word = ""
+            else:
+                word = word + text[i]
+            i = i + 1
+        words.append(word)
+        words = [w for w in words if w]
+        origin = int(origin)
+        return words, origin, error 
+        
+    def handle_if(self, parameters, namespace={}):
+        condition, block = parameters
         all_ok = True
         if condition == "\"TRUE":
             all_ok = self.handle_command(block[1:-1])
         return all_ok
+
+    def handle_if_else(self, parameters, namespace={}):
+        condition, block1, block2 = parameters
+        all_ok = True
+        if condition == "\"TRUE":
+            all_ok = self.handle_command(block1[1:-1])
+        else:
+            all_ok = self.handle_command(block2[1:-1])
+        return all_ok
+
+    def handle_do_while(self, parameters, namespace={}):
+        condition, block = parameters
+        words, error = self.tokenize(condition[1:-1])      
+        result, dummy, error = self.process_expression(words[:], namespace)
+        all_ok = True
+        while result == "\"TRUE":
+            all_ok = self.handle_command(block[1:-1])
+            result, dummy, error = self.process_expression(words[:], namespace)
+        return all_ok
         
-    def handle_lowercase(self, word):
-        return str(word).lower()
+    def handle_lowercase(self, parameters, namespace={}):
+        return str(parameters[0]).lower()
 
-    def handle_uppercase(self, word):
-        return str(word).upper()
+    def handle_uppercase(self, parameters, namespace={}):
+        return str(parameters[0]).upper()
         
-    def handle_ascii(self, parameter):
-        return ord(parameter)
+    def handle_ascii(self, parameters, namespace={}):
+        return ord(parameters[0])
 
-    def handle_rawascii(self, parameter):
-        return ord(parameter)
+    def handle_rawascii(self, parameters, namespace={}):
+        return ord(parameters[0])
 
-    def handle_char(self, parameter):
-        return chr(parameter)
+    def handle_char(self, parameters, namespace={}):
+        return chr(parameter[0])
 
-    def handle_quoted(self, parameter):
-        return "\"" + parameter
+    def handle_quoted(self, parameters, namespace={}):
+        return "\"" + parameters[0]
 
-    def is_word(self, thing):
+    def is_word(self, parameters, namespace={}):
+        thing = parameters[0]
+        return self._is_word(thing)
+            
+    def _is_word(self, thing, namespace={}):
         if not thing:
            return FALSE
         elif str(thing)[0] == "[" and str(thing)[-1]=="]":
@@ -657,74 +815,104 @@ class Commander:
            return False        
         return TRUE
 
-    def is_list(self, thing):
+    def is_list(self, parameters, namespace={}):
+        thing = parameters[0]
+        return self._is_list(thing)
+            
+    def _is_list(self, thing):
         if thing and str(thing)[0] == "[" and str(thing)[-1] == "]":
            return TRUE
         return FALSE
 
-    def is_array(self, thing):
-        if not thing:
-           return FALSE
-        elif thing[0] != "{" or thing[-1] != "}":
-           return FALSE
-        return TRUE
+    def is_array(self, thing, parameters, namespace={}):
+        thing = parameters[0]
+        return self._is_array(thing)
+            
+    def _is_array(self, thing):
+        if thing[0] == "{" and ((thing[-1] == "}") or ("}@" in thing)):
+           return TRUE
+        return FALSE
 
-    def is_empty(self, thing):
+    def is_empty(self, parameters, namespace={}):
+        thing = parameters[0]
         if not thing or thing == "[]":
            return FALSE
         return TRUE
 
-    def is_backslashed(self, thing):
+    def is_backslashed(self, parameters, namespace={}):
+        thing = parameters[0]
         if thing and thing[0] == "\\":
            return TRUE
         return FALSE
 
-    def is_substring(self, thing1, thing2):
+    def is_substring(self, parameters, namespace={}):
+        thing1, thing2 = parameters
         if thing1 in thing2:
             return TRUE
         return FALSE
 
-    def is_before(self, thing1, thing2):
+    def is_before(self, parameters, namespace={}):
+        thing1, thing2 = parameters
         if thing1 < thing2:
            return TRUE
         return FALSE
 
-    def is_equal(self, thing1, thing2):
+    def is_equal(self, parameters, namespace={}):
+        thing1, thing2 = parameters
         if thing1 == thing2:
             return TRUE
         return FALSE
 
-    def is_not_equal(self, thing1, thing2):
-        if not self.is_equal(thing1, thing2):
+    def is_not_equal(self, parameters, namespace={}):
+        if not self.is_equal(parameters, namespace):
             return TRUE
         return FALSE
 
-    def is_number(self, thing):
+    def is_number(self, parameters, namespace={}):
+        thing = parameters[0]
         try:
             i = int(thing)
             return TRUE
         except:
             return FALSE
-        
-    def handle_count(self, parameter):
-        if self.is_word(parameter):
-            chars, error = self._split_word(parameter)
+
+    def is_member(self, parameters, namespace={}):
+        thing1, thing2 = parameters
+        #if "thing2" is a list or an array, outputs TRUE if "thing1" is EQUALP 	to a member of "thing2", FALSE otherwise.  If "thing2" is 	a word, outputs TRUE if "thing1" is a one-character word EQUALP to a 	character of "thing2", FALSE otherwise.
+        if self._is_list(thing2, namespace) == TRUE:
+            items, error = self._split_list(thing2, namespace)
+            if thing1 in items:
+                return TRUE
+        elif self._is_array(thing2, namespace) == TRUE:
+            items, origin, error = self._split_array(thing2, namespace)
+            if thing1 in items:
+                return TRUE
+        elif self._is_word(thing2, namespace) == TRUE and self._is_word(thing1, namespace) == TRUE:
+            if len(thing1) == 2 and thing1[1:] in thing2:
+                return TRUE
+        return FALSE
+                
+    def handle_count(self, parameters, namespace={}):
+        thing = parameters[0]
+        if self._is_word(thing, namespace):
+            chars, error = self._split_word(thing, namespace)
             return len(chars)
-        elif self.is_list(parameter):
-            words, error = self._split_list(parameter)
+        elif self._is_list(thing, namespace):
+            words, error = self._split_list(thing, namespace)
             return len(words)
         else:
-            return None, "can't split "+str(parameter)
+            return None, "can't split "+str(thing)
 
-    def handle_member(self, member, l):
-        if self.is_word(member):
-            chars, error = self._split_word(member)
+    def handle_member(self, parameters, namespace={}):
+        member, l = parameters
+        if self._is_word(member, namespace):
+            chars, error = self._split_word(member, namespace)
             if member in chars:
                 return TRUE
             else:
                 return FALSE
-        elif self.is_list(member):
-            words, error = self._split_list(member)
+        elif self._is_list(member, namespace):
+            words, error = self._split_list(member, namespace)
             if member in words:
                 return TRUE
             else:
@@ -732,109 +920,128 @@ class Commander:
         else:
             return None, "can't split "+str(parameter)
             
-    def handle_item(self, index, thing):
-        return first_and_last(index, thing)
+    def handle_item(self, parameters, namespace={}):
+        index, thing = parameters
+        return first_and_last(index, thing, namespace)
 
-    def handle_remove(self, thing, l):
-        words, error = self._split_list(l)
+    def handle_remove(self, parameters, namespace={}):
+        thing, l = parameters
+        words, error = self._split_list(l, namespace)
         out = []
         for w in words:
-            if self.is_equal(thing, w):
+            if self.is_equal([thing, w], namespace):
                 continue
             else:
                 out.append(w)
-        return self.construct_list(out)
+        return self.construct_list(out, namespace)
 
-    def handle_remdup(self, l):
-        words, error = self._split_list(l)
+    def handle_remdup(self, parameters, namespace={}):
+        l = parameters[0]
+        words, error = self._split_list(l, namespace)
         out = []
         for w in words:
             if w in out:
                 continue
             else:
                 out.append(w)
-        return self.construct_list(out)
+        return self.construct_list(out, namespace)
 
-    def _handle_firsts_etc(self, func):
-        lists, error = self._split_list(l)
+    def _handle_firsts_etc(self, func, parameters, namespace):
+        l = parameters[0]
+        if self._is_list(l, namespace):
+            lists, error = self._split_list(l, namespace)
+        else:
+            lists = []
+            print l, "is not a list!"
+            
         out = []
         for sub_l in lists:
             out.append(func(sub_l))
-        return self.construct_list(out)
+        return self.construct_list(out, namespace)
 
-    def handle_firsts(self, l):
-        return self._handle_firsts_etc(self.handle_first)
+    def handle_firsts(self, parameters, namespace):
+        return self._handle_firsts_etc(self.handle_first, parameters, namespace)
 
-    def handle_butfirsts(self, l):
-        return self._handle_firsts_etc(self.handle_butfirst)
+    def handle_butfirsts(self, parameters, namespace):
+        return self._handle_firsts_etc(self.handle_butfirst, parameters, namespace)
 
-    def handle_lasts(self, l):
-        return self._handle_firsts_etc(self.handle_last)
+    def handle_lasts(self, parameters, namespace):
+        return self._handle_firsts_etc(self.handle_last, parameters, namespace)
 
-    def handle_butlasts(self, l):
-        return self._handle_firsts_etc(self.handle_butlast)
+    def handle_butlasts(self, parameters, namespace):
+        return self._handle_firsts_etc(self.handle_butlast, parameters, namespace)
 
-    def handle_first(self, t):
-        return self.first_and_last(0, t)
+    def handle_first(self, parameters, namespace):
+        return self.first_and_last(0, parameters, namespace)
 
-    def handle_butfirst(self, t):
-        return self.butfirst_and_butlast([1,None], t)
+    def handle_butfirst(self, parameters, namespace):
+        return self.butfirst_and_butlast([1,None], parameters, namespace)
 
-    def handle_last(self, t):
-        return self.first_and_last(-1, t)
+    def handle_last(self, parameters, namespace):
+        return self.first_and_last(-1, parameters, namespace)
 
-    def handle_butlast(self, t):
-        return self.butfirst_and_butlast([0,-1], t)
+    def handle_butlast(self, parameters, namespace):
+        return self.butfirst_and_butlast([0,-1], parameters, namespace)
         
-    def first_and_last(self, place, thing):
-        if self.is_word(thing):
-            chars, error = self._split_word(thing)
+    def first_and_last(self, place, parameters, namespace):
+        if self.is_word(parameters, namespace):
+            chars, error = self._split_word(parameters[0], namespace)
             return "\"" + chars[place]
-        elif self.is_list(thing):
-            words, error = self._split_list(thing)
+        elif self.is_list(parameters, namespace):
+            words, error = self._split_list(parameters[0], namespace)
             return words[place]
         else:
-            return None, "can't split "+str(thing)
+            return None, "can't split "+str(parameters)
 
-    def butfirst_and_butlast(self, places, thing):
+    def butfirst_and_butlast(self, places, parameters, namespace):
         splace, eplace = places
-        if self.is_word(thing):
-            chars, error = self._split_word(thing)
+        if self.is_word(parameters, namespace):
+            chars, error = self._split_word(parameters[0], namespace)
             return "\"" + "".join(chars[splace:eplace])
-        elif self.is_list(thing):
-            words, error = self._split_list(thing)
+        elif self.is_list(parameters, namespace):
+            words, error = self._split_list(parameters[0], namespace)
             return "["+ " ".join(words[splace:eplace]) + "]"
         else:
-            return None, "can't split "+str(thing)
+            return None, "can't split "+str(parameters)
 
-    def handle_pick(self, parameter):
-        if self.is_word(parameter):
-            chars, error = self._split_word(parameter)
+    def handle_pick(self, parameters, namespace):
+        if self.is_word(parameters, namespace):
+            chars, error = self._split_word(parameters[0], namespace)
             return "\"" + random.choice(chars), ""
-        elif self.is_list(parameter):
-            words, error = self._split_list(parameter)
+        elif self.is_list(parameters, namespace):
+            words, error = self._split_list(parameters[0], namespace)
             return random.choice(words), ""
         else:
-            return None, "can't split "+str(parameter)
+            return None, "can't split "+str(parameters)
 
-    def handle_to(self, words, namespace):
+    def handle_to(self, words_or_text, namespace, debug=True):
+        if type(words_or_text) == type([]):
+            words = words_or_text
+        else:
+            text = words_or_text
         if not self.current_proc_name:
             self.current_proc_name = words[0]
             namespace[words[0]] = [words[1:]] + [[]]
-        elif words == ["end"] or words == [self.HH.to_hebrew("svF")]:
+        elif text == "end" or text == self.HH.to_hebrew("svF"):
+            if debug:
+                print "Defined", self.current_proc_name
+                print "Input=", namespace[self.current_proc_name][0]
+                print "Body=\n", "\n".join(namespace[self.current_proc_name][1])
             self.current_proc_name = ""
         else:
-            namespace[self.current_proc_name][1].append(" ".join(words))
+            namespace[self.current_proc_name][1].append(text)
         return namespace
 
-    #def random(self, number):
-    #    import random
-    #    return int(random.random(number))
-
-    def handle_set_item(self, num, array, thing):
-        pass
+    def handle_set_item(self, parameters, namespace={}):
+        num, array, thing = parameters
+        items, origin, error = self._split_array(array)
+        items[int(num) - origin] = "[" + thing + "]"
+        if origin == 1:
+            return "{" + " ".join(items) + "}"
+        else:
+            return "{" + " ".join(items) + "}@"+str(origin)
         
-    def _parse_word(self, word):
+    def _parse_word(self, word, namespace={}):
         w = str(word)
         if w and w[0] == "\"":
             return w[1:]
@@ -843,75 +1050,73 @@ class Commander:
         else:
             return w
 
-    def handle_fput(self, thing, l):
-        if self.is_word(thing):
-            item = self._parse_word(thing)
+    def handle_fput(self, parameters, namespace={}):
+        thing, l = parameters
+        if self._is_word(thing, namespace):
+            item = self._parse_word(thing, namespace)
         else:
             item = thing
 
-        print item, l
-
-        if self.is_word(l) and len(item) == 1:
-             return self.construct_word(item, l)
-        elif self.is_list(l):
+        if self._is_word(l, namespace) and len(item) == 1:
+             return self.construct_word([item, l], namespace)
+        elif self.is_list(l, namespace):
             return "[" + item  + " " + l[1:-1] +"]"
         return "ERROR"
 
-    def handle_lput(self, thing, l):
-        if self.is_word(thing):
-            item = self._parse_word(thing)
+    def handle_lput(self, parameters, namespace={}):
+        thing, l = parameters
+        if self.is_word(thing, namespace):
+            item = self._parse_word(thing, namespace)
         else:
             item = thing
 
-        if self.is_word(l) and len(item) == 1:
-             return self.construct_word(l, item)
-        elif self.is_list(l):
+        if self.is_word(l, namespace) and len(item) == 1:
+             return self.construct_word([l, item], namespace)
+        elif self.is_list(l, namespace):
             return "[" +  l[1:-1] + " " + item +"]"
         return "ERROR"
     
-    def construct_word(self, parameter1, parameter2):
-        parameters = [parameter1, parameter2]
-        return "\"" + ("".join([self._parse_word(p) for p in parameters]))
+    def construct_word(self, parameters, namespace={}):
+        return "\"" + ("".join([self._parse_word(p, namespace) for p in parameters]))
 
-    def construct_list(self, parameter1, parameter2 = None):
-        if parameter2 == None:
-            l = parameter1
-        else:
-            parameters = [parameter1, parameter2]
-            l = []
-            for p in parameters:
-                if self.is_word(p):
-                    l.append(self._parse_word(p))
-                elif self.is_list(p):
-                    l.append(p)
-        return "[" + " ".join(l) + "]"
-        
-    def construct_sentence(self, parameter1, parameter2):
-        parameters = [parameter1, parameter2]
+    def construct_list(self, parameters, namespace={}):
         l = []
         for p in parameters:
-            if self.is_word(p):
-                l.append(self._parse_word(p))
-            elif self.is_list(p):
+            if self._is_word(p, namespace):
+                l.append(self._parse_word(p, namespace))
+            elif self._is_list(p, namespace):
+                l.append(p)
+        return "[" + " ".join(l) + "]"
+        
+    def construct_sentence(self, parameters, namespace={}):
+        print "Sentence", parameters
+        l = []
+        for p in parameters:
+            if self._is_word(p, namespace):
+                l.append(self._parse_word(p, namespace))
+            elif self._is_list(p, namespace):
                 l.append(p[1:-1])
         return "[" + " ".join(l) + "]"
         
-    def construct_array(self, parameter1, parameter2=None):
-        size = parameter1
-        if not parameter2:
-            origin = 1
+    def construct_array(self, parameters, namespace={}):
+        if len(parameters) == 2:
+            size = int(parameters[0])
+            origin = int(parameters[1])
         else:
-            origin = parameter2
+            size = int(parameters[0])
+            origin = 1
         if origin == 1:
             end_bracket = "}"
         else:
-            end_bracket = "}@"+str(parameter2)
+            end_bracket = "}@"+str(origin)
         return "{"+" ".join("[]" * size) + end_bracket
         
-    def list_to_array(self, l):
+    def list_to_array(self, parameters, namespace={}):
+        l = parameters[0]
         return "{"+l[1:-1]+"}"
 
-    def array_to_list(self, a):
+    def array_to_list(self, parameters, namespace={}):
+        a = parameters[0]
         if a[-1] == "}":
             end = -1
         else:
@@ -920,14 +1125,16 @@ class Commander:
             end = len(temp)
         return "["+a[1:end]+"]"
             
-    def clear_screen(self):
+    def clear_screen(self, parameters=[], namespace={}):
         self.app.clear_screen()
         self.home()
         self.refresh_turtle_flag = True
+        return True
 
-    def clean(self):
+    def clean(self, parameters=[], namespace={}):
         self.app.clear_screen()
         self.refresh_turtle_flag = True
+        return True
 
     def test(self):
         return
@@ -968,7 +1175,6 @@ class Commander:
         return a, b
         
     def _calculate_line_and_frame_instersections(self, sx, sy, ex, ey):
-        #print "calculate_line_and_frame_instersections", sx, sy, ex, ey, H, W, a, b
         a , b = self._calculate_a_and_b(sx, sy, ex, ey)
 
         W = self.screen_width + 0.0
@@ -1062,6 +1268,11 @@ class Commander:
             deltax = endx - startx
             deltay = endy - starty
             segment = self._calculate_visible_segment(sx, sy, endx, endy)
+            if not segment:
+                self._set_turtle_position(endx, endy)
+                self.refresh_turtle_flag = True
+                return True
+                
             all_ok = True
             while all_ok:
                 line_startx, line_starty, line_endx, line_endy = segment
@@ -1129,12 +1340,6 @@ class Commander:
         self.app.draw_line(sx, sy, ex, ey)
         #self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
 
-    def forward(self, distance):
-        return self._move_distance(distance, -1)
-        
-    def backward(self, distance):
-        return self._move_distance(distance, 1)
-            
     def _move_distance(self, distance, direction):
         startx, starty = self._get_turtle_position()
         if self.turtle_heading == 180:
@@ -1147,27 +1352,39 @@ class Commander:
         endy = starty + direction * diry * (distance + 0.0)
         return self._move_to_position(endx, endy)
 
-    def right(self, degrees):
+    def forward(self, parameters, namespace={}):
+        distance = parameters[0]
+        return self._move_distance(distance, -1)
+        
+    def backward(self, parameters, namespace={}):
+        distance = parameters[0]
+        return self._move_distance(distance, 1)
+            
+    def right(self, parameters, namespace={}):
+        degrees = parameters[0]
         self.turtle_heading = (self.turtle_heading - degrees) % 360
         self.refresh_turtle_flag = True
         return True
 
-    def left(self, degrees):
+    def left(self, parameters, namespace={}):
+        degrees = parameters[0]
         self.turtle_heading = (self.turtle_heading + degrees) % 360
         self.refresh_turtle_flag = True
         return True
         
-    def home(self):
+    def home(self, parameters=[], namespace={}):
         self._set_turtle_position(self.turtle_home_position[0], self.turtle_home_position[1])
         self.refresh_turtle_flag = True
         return True
 
-    def set_turtle_view(self, flag):
+    def set_turtle_view(self, parameters, namespace={}):
+        flag = parameters[0]
         self.show_turtle_flag = flag
         self.refresh_turtle_flag = True
         return True
         
-    def handle_turtle_query(self, query):
+    def handle_turtle_query(self, parameters, namespace={}):
+        query = parameters[0]
         tx , ty = self._get_turtle_position()
         x = tx - self.turtle_home_position[0]
         if x == int(x):
@@ -1186,24 +1403,34 @@ class Commander:
         elif query == "heading":
             return self.turtle_heading
 
-    def towards(self, pos, namespace={}):
+    def towards(self, parameters, namespace={}):
+        pos = parameters[0]
         tokens, error = self.tokenize(pos[1:-1])
         x, tokens, error = self.process_expression(tokens[:], namespace)
         y, tokens, error = self.process_expression(tokens[:], namespace)
         return self.handle_math("arctan", x/y)
 
-    def set_pen_position(self, position):
-        self.pen_position = position
+    def set_pen_position(self, pos, parameters, namespace={}):
+        self.pen_position = pos
         return True
         
-    def set_pen_mode(self, mode):
+    def set_pen_mode(self, mode, parameters=[], namespace={}):
         self.pen_position = PEN_DOWN
         self.pen_mode = mode
         self.app.set_pen_mode(mode)
         return True
 
-    def set_pen_color(self, parameter):
-        if self.is_list(parameter) == TRUE:
+    def set_draw_mode(self, parameters, namespace={}):
+        mode = parameters[0]
+        self.draw_mode = mode
+        if mode == MODE_WINDOW:
+            x = self._get_turtle_position()[0] % self.screen_width
+            y = self._get_turtle_position()[1] % self.screen_height
+            self.turtle_position = [x, y]
+        return True
+
+    def _parse_color(self, parameter, namespace={}):
+        if self.is_list([parameter]) == TRUE:
             tokens, error = self.tokenize(parameter[1:-1])
             r, tokens, error = self.process_expression(tokens[:], namespace)
             g, tokens, error = self.process_expression(tokens[:], namespace)
@@ -1213,49 +1440,62 @@ class Commander:
             r = rgb[0] * 256.0
             g = rgb[1] * 256.0
             b = rgb[2] * 256.0
+        return r,g,b
+
+    def set_pen_color(self, parameters, namespace={}):
+        color = parameters[0]
+        r,g,b = self._parse_color(color, namespace)
         self.app.set_foreground_color(r, g, b)
-        self.pen_color = parameter
+        self.pen_color = color
         return True
 
-    def set_draw_mode(self, mode):
-        self.draw_mode = mode
-        if mode == MODE_WINDOW:
-            x = self._get_turtle_position()[0] % self.screen_width
-            y = self._get_turtle_position()[1] % self.screen_height
-            self.turtle_position = [x, y]
+    def set_screen_color(self, parameters, namespace={}):
+        color = parameters[0]        
+        r,g,b = self._parse_color(color, namespace)
+        self.app.set_background_color(r, g, b)
+        self.screen_color = color
         return True
 
-    def set_heading(self, angle):
-        self.turtle_heading = (angle) % 360
+    def set_heading(self, parameters, namespace={}):
+        angle = parameters[0]
+        self.turtle_heading = (angle + 180) % 360
         return True
 
-    def set_x(self, x):
+    def set_x(self, parameters, namespace={}):
+        x = parameters[0]
         return self._move_to_position(x + self.turtle_home_position[0], self._get_turtle_position()[1])
 
-    def set_y(self, y):
+    def set_y(self, parameters, namespace={}):
+        y = parameters[0]
         return self._move_to_position(self._get_turtle_position()[0], y + self.turtle_home_position[1])
 
-    def set_xy(self, x, y):
+    def set_xy(self, parameters, namespace={}):
+        x, y = parameters
         return self._move_to_position(x + self.turtle_home_position[0], y + self.turtle_home_position[1])
         
-    def go_to(self, position):
-        words, error = self.tokenize(position[1:-1])
-        if not error:
-            x, words, error = self.process_expression(words[1:], namespace)
-            y, words, error = self.process_expression(words, namespace)
-        return self.set_xy(x, y)        
+    def go_to(self, parameters, namespace={}):
+        pos = parameters[0]
+        tokens, error = self._split_list(pos)
+        x, words, error = self.process_expression(tokens[:], namespace)
+        y, words, error = self.process_expression(words[:], namespace)
+        return self.set_xy([int(x), int(y)], namespace)        
 
-    def set_pen_size(self, size):
-        self.app.set_line_width(size)
-        return
+    def set_pen_size(self, parameters, namespace={}):
+        print parameters
+        width = self.handle_first(parameters, namespace)
+        self.app.set_line_width(int(width))
+        return True
 
-    def repeat_loop(self, times, loop_body, namespace):
+    def repeat_loop(self, parameters, namespace={}):
+        times, loop_body = parameters
+        all_ok = True
         for i in xrange(times):
             namespace['repcount'] = i + 1
-            all_ok = self.handle_command(loop_body, namespace)
+            all_ok = self.handle_command(loop_body, namespace={})
         return all_ok
         
-    def for_loop(self, loop_header, loop_body, namespace={}):
+    def for_loop(self, parameters, namespace={}):
+        loop_header, loop_body = parameters
         words, error = self.tokenize(loop_header[1:-1])
         if not error:
             variable = words[0]
@@ -1306,6 +1546,7 @@ class Commander:
             self.temp_image = None
         else:
             print "Can't hide turtle"
+        return True
             
     def draw_turtle(self):
         startx, starty = self._get_turtle_position()
@@ -1313,57 +1554,48 @@ class Commander:
         head_dirx, head_diry = self._calc_dirx_and_diry(angle)
         toe1_dirx, toe1_diry = self._calc_dirx_and_diry(angle+120)
         toe2_dirx, toe2_diry = self._calc_dirx_and_diry(angle+240)
-        head = (int(startx - head_dirx * 6.0), int(starty - head_diry * 6.0))
-        toe1 = (int(startx - toe1_dirx * 6.0), int(starty - toe1_diry * 6.0))
-        toe2 = (int(startx - toe2_dirx * 6.0), int(starty - toe2_diry * 6.0))
+        head = [int(startx - head_dirx * 6.0), int(starty - head_diry * 6.0)]
+        toe1 = [int(startx - toe1_dirx * 6.0), int(starty - toe1_diry * 6.0)]
+        toe2 = [int(startx - toe2_dirx * 6.0), int(starty - toe2_diry * 6.0)]
         if self._is_visible((startx, starty)):
             self.temp_image = self.app.get_turtle_image(startx, starty)
-            #self.area.window.get_image(int(startx - 10.0), int(starty- 10.0), 20, 20) 
         else:
             self.temp_image = None
-        print "TURTLE", (head, toe1, toe2)
         self.app.draw_turtle(head, toe1, toe2)
+        return True
         
-    def handle_label(self, text):
+    def handle_label(self, parameters, namespace={}):
+        text = parameters[0]
         startx, starty = self._get_turtle_position()
-        if self.is_word(text):
+        if self._is_word(text):
            text = text[1:]
-        elif self.is_list(text):
+        elif self._is_list(text):
            text = text[1:-1]
-
         self.app.draw_label(text, startx, starty)
+        return True
         
     def _get_turtle_position(self):
-        #print "TP", self.turtle_xposition, self.turtle_yposition
         return self.turtle_xposition, self.turtle_yposition
         
     def _set_turtle_position(self, x, y):
-        #print "TP", x, y
         self.turtle_xposition = x
         self.turtle_yposition = y
         
-    def show_output(self, output):
+    def show_output(self, output, namespace={}):
         #Prints the input or inputs like PRINT, except that if an input is a list it is printed inside square brackets
         return self.print_output(output, mode = MODE_SHOW)
 
-    def type_output(self, output):
+    def type_output(self, output, namespace={}):
         #Prints the input or inputs like PRINT, except that no newline character is printed at the end and multiple inputs are not separated by spaces.
         return self.print_output(output, mode = MODE_TYPE)
         
-    def print_output(self, output, mode=MODE_PRINT, namespace={}):
-        #print "OUTPUT=", output
+    def print_output(self, parameters, mode=MODE_PRINT, namespace={}):
+        output = parameters[0]
         words, error = self.tokenize(output)
         out, words, error = self.process_expression(words[:], namespace)
-        
-        #if type(out) == type(0) or type(out) == type(0.0):
-        #    out = str(out)
-        #    if out and out[-2:] == ".0":
-        #        out = out[:-2]
-        #elif self.is_word(out):
-        #    out = out[1:]
-        if self.is_word(out):
+        if self._is_word(out):
             out = self._parse_word(out)
-        elif self.is_list(out) and (mode != MODE_SHOW):
+        elif self._is_list(out) and (mode != MODE_SHOW):
             out = out[1:-1]
         self.output_label.set_text(str(out))
         if mode == MODE_TYPE:
@@ -1434,13 +1666,11 @@ class App:
             self.history_mode = True
             if self.history_index > 0:
                 self.history_index = self.history_index - 1
-            #print self.history_index, len(self.history)
             widget.set_text(self.history[self.history_index])
             return True
         elif event.keyval == 65364: #down
             self.history_mode = True
             self.history_index = self.history_index + 1
-            #print self.history_index, len(self.history)
             if self.history_index == len(self.history):
                 self.history_index = self.history_index - 1
             else:
@@ -1464,23 +1694,34 @@ class App:
 
     def clear_screen(self):
         self.area.window.clear()
+        return True
         
     def draw_label(self, text, x, y):
+        y = self._fix_y(y)
         context = self.area.get_pango_context()
         layout = pango.Layout(context)
         layout.set_text(text)
         self.area.window.draw_layout(self.gc, int(x), int(y), layout)        
 
+    def _fix_y (self, y):
+        return SCREEN_HEIGHT - y 
+
     def draw_turtle(self, head, toe1, toe2):
+        head = (head[0], self._fix_y(head[1]))
+        toe1 = (toe1[0], self._fix_y(toe1[1]))
+        toe2 = (toe2[0], self._fix_y(toe2[1]))
         self.area.window.draw_polygon(self.gc, True, (head, toe1, toe2))
 
     def hide_turtle(self, image, startx, starty):
+        starty = self._fix_y(starty)
         self.area.window.draw_image(self.gc, image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
         
     def paste_turtle(self, image, startx, starty):
+        starty = self._fix_y(starty)
         self.area.window.draw_image(self.gc, image, 0, 0, int(startx - 9.0), int(starty- 9.0), 20, 20)
         
     def get_turtle_image(self, startx, starty):
+        starty = self._fix_y(starty)
         return self.area.window.get_image(int(startx - 10.0), int(starty- 10.0), 20, 20) 
         
     def set_line_width(self, size):
@@ -1489,6 +1730,10 @@ class App:
     def set_foreground_color(self, r, g, b):
         color = gtk.gdk.Color(r, g, b)
         self.gc.set_rgb_fg_color(color) #self.gc.set_foreground(color)
+
+    def set_background_color(self, r, g, b):
+        color = gtk.gdk.Color(r, g, b)
+        self.gc.set_rgb_bg_color(color) #self.gc.set_foreground(color)
         
     def set_pen_mode(self, mode):
         if mode == PEN_ERASE:
@@ -1499,6 +1744,8 @@ class App:
             self.gc.function = gtk.gdk.SET
         
     def draw_line(self, sx, sy, ex, ey):
+        sy = self._fix_y(sy)
+        ey = self._fix_y(ey)
         self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
 
     def destroy(self, event=None):

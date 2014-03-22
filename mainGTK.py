@@ -1,6 +1,6 @@
 #!/usr/bin/env python2.7
 
-import turtle
+#import turtle
 import math, random, copy
 import pygtk
 pygtk.require('2.0')
@@ -59,6 +59,161 @@ class HebrewHandler:
             else:
                 out.append(c)
         return u"".join(out)
+
+class Workspace:
+    def __init__(self, outer_workspace=None):
+        self.procedures = {}
+        self.names = {}
+        self.plists = {}
+        self.buried = []
+        self.traced = []
+        self.stepped = []
+        self.outer_workspace = outer_workspace
+
+    def set_primitives(self, primitives):
+        self.primitives = primitives
+        
+    def set_outer_workspace(self, workspace):
+        self.outer_workspace = workspace
+        
+    def _as_list(self, l):
+        return "["+" ".join(l)+"]"
+        
+    def handle_proc_input(self, varname, value):
+        self.names[varname] = value
+        return True
+        
+    def handle_make(self, varname, value):
+        if self.outer_workspace:
+            all_ok = self.outer_workspace.handle_make(varname, value)
+        else:
+            self.names[varname] = value
+            all_ok = True
+        return all_ok
+
+    def handle_name(self, value, varname):
+        if self.outer_workspace:
+            all_ok = self.outer_workspace.handle_name(value, varname)
+        else:
+            self.names[varname] = value
+            all_ok = True
+        return all_ok
+        
+    def handle_thing(self, varname):
+        if varname in self.names:
+            return self.names[varname]
+        elif self.outer_workspace:
+            return self.outer_workspace.handle_thing(varname)
+        else:
+            return None
+            
+    def get_procedure(self, procname):
+        if procname in self.procedures:
+            return self.procedures[procname]
+        elif self.outer_workspace:
+            return self.outer_workspace.get_procedure(procname)
+        else:
+            return None
+        
+    def handle_global(self, parameters):
+        print "GLOBAL:", parameters
+        
+    def handle_procedurep(self, name):
+        if (name in self.procedures()) or (name in self.primitives()):
+            return TRUE
+        elif self.outer_workspace:
+            return self.outer_workspace.handle_procedurep(name)
+        return FALSE
+
+    def handle_primitivep(self, name):
+        if name in self.primitives():
+            return TRUE
+        elif self.outer_workspace:
+            return self.outer_workspace.handle_primitivep(name)
+        return FALSE
+
+    def handle_definedp(self, name):
+        if name in self.procedures():
+            return TRUE
+        elif self.outer_workspace:
+            return self.outer_workspace.handle_definedp(name)
+        return FALSE
+
+    def handle_namep(self, name):
+        if name in self.names():
+            return TRUE
+        elif self.outer_workspace:
+            return self.outer_workspace.handle_namep(name)
+
+        return FALSE
+
+    def handle_plistp(self, name):
+        if name in self.plists():
+            return TRUE
+        elif self.outer_workspace:
+            return self.outer_workspace.handle_plistp(name)
+        return FALSE
+
+    def handle_contents(self):
+        procs = self.handle_procedures()
+        names = self.handle_names()
+        plists = self.handle_plists()
+        return self._as_list([procs, names,plists])
+
+    def handle_buried(self):
+        return self._as_list(self.buried)
+
+    def handle_traced(self):
+        return self._as_list(self.traced)
+        
+    def handle_stepped(self):
+        return self._as_list(self.stepped)
+        
+    def handle_procedures(self):
+        l = self._get_procedures()
+        return self._as_list(l)
+
+    def _get_names(self):
+        if self.outer_workspace is not None:
+            l = self.outer_workspace._get_names()
+            l.extend([name for name in self.names if name not in self.buried])
+        else:
+            l = [name for name in self.names if name not in self.buried]
+        return l
+
+    def _get_procedures(self):
+        if self.outer_workspace is not None:
+            l = self.outer_workspace._get_procedures()
+            l.extend([name for name in self.procedures if name not in self.buried])
+        else:
+            l = [name for name in self.procedures if name not in self.buried]
+        return l
+
+    def handle_primitives(self):
+        l = [name for name in self.primitives]
+        return self._as_list(l)
+            
+    def handle_names(self):
+        l = self._get_names()
+        names = self._as_list(l)
+        return self._as_list([procs, names])
+
+    def handle_plists(self):
+        procs = "[]"
+        names = "[]"
+        l = [name for name in self.plists if name not in self.buried]
+        #SHOULD FILTER AND SHOW ONLY NON-EMPTY PLISTS
+        names = self._as_list(l)
+        return self._as_list([procs, names])
+
+    def handle_namelist(self, name_or_list):
+        pass
+    def handle_pllist(self, name_or_list):
+        pass
+    def handle_arity(self, proc_name):
+        pass
+    def handle_nodes(self):
+        pass
 
 class Commander:
     def __init__(self, app):
@@ -191,7 +346,6 @@ class Commander:
         self.HH = HebrewHandler()
         self.movement_commands = {}
         self.commands = {}
-        self.namespace = {}
         self.screen_width = SCREEN_WIDTH
         self.screen_height = SCREEN_HEIGHT
         self.turtle_home_position = [SCREEN_WIDTH/2 + 0.0, SCREEN_HEIGHT/2 + 0.0]
@@ -221,6 +375,8 @@ class Commander:
                 hebrew_command = self.HH.to_hebrew(hcommand)
                 self.commands[hebrew_command] = (logo[0],inputs,function,default_input)
         
+        self.workspace = Workspace()
+        self.workspace.set_primitives(self.commands)
         self.test()
     
     def set_output_label(self, label):
@@ -346,34 +502,37 @@ class Commander:
             print "TOKENS=", tokens
         return tokens, error        
         
-    def process_expression(self, words, namespace={}, parameter_only=False, greedy = False, debug=False):
+    def process_expression(self, words, workspace={}, parameter_only=False, greedy = False, debug=False):
         if debug:
             print "Process expression: Words=", words
+        if not workspace:
+            workspace = self.workspace
         token = words[0]
         words = words[1:]
         error = ""
         value = None
         if debug:
-            keys = namespace.keys()
-            keys.sort()
-            print "Processing expression: Token", token, "Namespace", keys
+            print "Processing expression: Token", token
         
-        if token == "repcount" and "repcount" in namespace:
-            value = namespace['repcount']
+        if token == "repcount":
+            value = self.current_repcount
 
-        elif token in namespace:
+        elif token in workspace._get_procedures():
             if debug: 
-                print "Handling proc:", namespace[token]
-            local_namespace = copy.deepcopy(namespace)
-            for variable in namespace[token][0]:
-                parameter, words, error = self.process_expression(words, local_namespace)
-                local_namespace[variable[1:]] = parameter
+                print "Handling proc:", workspace.procedures[token]
+
+            new_workspace = Workspace(workspace)
+            for variable in workspace.get_procedure(token)[0]:
+                parameter, words, error = self.process_expression(words, new_workspace)
+                new_workspace.handle_proc_input(variable[1:], parameter)
+
             if debug: 
-                print local_namespace
+                print new_workspace.names
             all_ok = True
-            for line in namespace[token][1]:
+
+            for line in workspace.get_procedure(token)[1]:
                 if all_ok:
-                    all_ok = self.handle_command(line, local_namespace)
+                    all_ok = self.handle_command(line, new_workspace)
                 else:
                     break
             all_ok = True
@@ -387,25 +546,25 @@ class Commander:
             if greedy:
                 parameters = []
                 while words:
-                    parameter, words, error = self.process_expression(words, namespace, parameter_only=True)                    
+                    parameter, words, error = self.process_expression(words, workspace, parameter_only=True)                    
                     parameters.append(parameter)
             else:
                 parameters = []
                 for i in range(len(inputs)):
-                    parameter, words, error = self.process_expression(words, namespace, parameter_only=True)
+                    parameter, words, error = self.process_expression(words, workspace, parameter_only=True)
                     parameters.append(parameter)
 
             if default_input != None:
-                value = function(default_input, parameters, namespace)
+                value = function(default_input, parameters, workspace)
             else:
-                value = function(parameters, namespace)
+                value = function(parameters, workspace)
 
         elif token[0] == ":":
-            if token[1:] in namespace:
-                value = namespace[token[1:]]
+            if token[1:] in workspace._get_names():
+                value = workspace.handle_thing(token[1:])
             else:
                 error = self.HH.to_hebrew("ani la ivdo me ze ")+token
-                keys = namespace.keys()
+                keys = workspace._get_names()
                 keys.sort()
                 print "I know only", keys
 
@@ -416,7 +575,7 @@ class Commander:
             new_tokens, error = self.tokenize(token[1:-1])
             if debug:
                 print "New_tokens=", new_tokens, "Error=", error
-            value, dummy, error = self.process_expression(new_tokens, namespace, greedy=True)
+            value, dummy, error = self.process_expression(new_tokens, workspace, greedy=True)
         
         elif token[0] == "[" and token[-1] == "]":
             value = token
@@ -435,7 +594,7 @@ class Commander:
             
         if words and words[0] in "+-/*%" and not parameter_only:
             operator = words[0]
-            value2, words, error = self.process_expression(words[1:], namespace)
+            value2, words, error = self.process_expression(words[1:], workspace)
 
             if operator == "+":
                 value = value + value2
@@ -450,7 +609,7 @@ class Commander:
         
         if words and words[0] in ["<",">","=", ">=", "<=", "<>"] and not parameter_only:                
             operator = words[0]
-            value2, words, error = self.process_expression(words[1:], namespace)
+            value2, words, error = self.process_expression(words[1:], workspace)
             if operator == "<":
                 cond = (value < value2)
             elif operator == ">":
@@ -472,7 +631,7 @@ class Commander:
             print "Expression Value=", value, "Words=", words, "Error=", error
         return value, words, error
                 
-    def handle_text(self, text, namespace={}):
+    def handle_text(self, text, workspace={}):
         # missing end brackets/parentheses should cause continuation line
         lines = text.split("\n")
         i = 0
@@ -496,14 +655,15 @@ class Commander:
                 i = i + 1
                 command = command + line
                 if not wait_for_complete_line_flag:
-                    self.handle_command(command, namespace)
+                    self.handle_command(command, workspace)
                 
-    def handle_command(self, text, namespace={}, debug=True):
+    def handle_command(self, text, workspace={}, debug=False):
         all_ok = True
         if not text:
             return all_ok
-        if not namespace:
-            namespace = self.namespace
+        if not workspace:
+            workspace = self.workspace
+
         # The two-character sequence #! at the beginning of a line also starts a comment.
         # A semicolon begins a comment in an instruction line.  Logo ignores characters from the semicolon to the end of the line.  A tilde as the last character still indicates a continuation line, but not a continuation of the comment.
         if text[-1] == "~": #A line (an instruction line or one read by READLIST or READWORD) can be continued onto the following line if its last character is a tilde (~).
@@ -518,7 +678,7 @@ class Commander:
         #print "TEXT={"+text+"}"
         unitext = text.decode("utf-8")
         if self.current_proc_name:
-            namespace = self.handle_to(unitext, namespace)
+            self.handle_to(unitext, workspace)
             words = []
         else:
             words, error = self.tokenize(unitext)
@@ -528,25 +688,28 @@ class Commander:
         while words:
             if debug: 
                 print "Words=", words, error
+                keys = self.commands.keys()
+                keys.sort()
+                print keys
             while not words[0]:
                 words = words[1:]
-            if words[0] in namespace:
-                if debug: 
-                    print "Handling proc:", namespace[words[0]]
+            if debug:
+                print words[0], "in self.commands?", words[0] in self.commands
+                print words[0], "in procedures?", words[0] in workspace._get_procedures()
+            if words[0] in workspace._get_procedures():
                 command = words[0]
                 words = words[1:]
-                local_namespace = copy.deepcopy(namespace)
-                for variable in namespace[command][0]:
-                    parameter, words, error = self.process_expression(words, local_namespace)
-                    local_namespace[variable[1:]] = parameter
+                new_workspace = Workspace(workspace)
+                for variable in workspace.get_procedure(command)[0]:
+                    parameter, words, error = self.process_expression(words, new_workspace)
+                    new_workspace.handle_proc_input(variable[1:], parameter)
                 if debug: 
-                    print local_namespace
+                    print new_workspace.names
                 all_ok = True
-                for line in namespace[command][1]:
+                for line in workspace.get_procedure(command)[1]:
                     if all_ok:
-                        all_ok = self.handle_command(line, local_namespace)
+                        all_ok = self.handle_command(line, new_workspace)
                     else:
-                        print "Breaking!"
                         break
                 all_ok = True
                         
@@ -561,13 +724,13 @@ class Commander:
                 default_input = self.commands[token][3]
                 
                 if token == "for":
-                    self.for_loop([words[0], words[1]], namespace)
+                    self.for_loop([words[0], words[1]], workspace)
                     words = words[2:]
                     
                 elif token == "output":
-                    print "Outputting:"
-                    out, words, error =  self.process_expression(words, namespace)
-                    return out
+                    print "Outputting: NOTHING DONE WITH OUTPUT YET!"
+                    out, words, error =  self.process_expression(words, workspace)
+                    return False
 
                 elif token == "stop":
                     words = []
@@ -575,7 +738,7 @@ class Commander:
                     return False
                     
                 elif token == "load":
-                    filename, words, error =  self.process_expression(words, namespace)
+                    filename, words, error =  self.process_expression(words, workspace)
                     f = open(filename[1:], "rb")
                     # REPLACE THIS WITH HANDLE_TEXT and treat open brackets as indication of line continuation
                     lines = [l.replace("\r", "") for l in f.readlines()]
@@ -585,37 +748,43 @@ class Commander:
                 elif token == "do.while":
                     condition = words[1]
                     block = words[0]
-                    self.handle_do_while([condition, block], namespace)
+                    self.handle_do_while([condition, block], workspace)
                     words = words[2:]
 
                 elif token == "repeat":
-                    times, words, error = self.process_expression(words, namespace)
+                    times, words, error = self.process_expression(words, workspace)
                     loop_body = words[0][1:-1]
-                    self.repeat_loop([int(times), loop_body], namespace)
+                    self.repeat_loop([int(times), loop_body], workspace)
                     words = words[1:]
 
                 elif token == "to":
-                    namespace = self.handle_to(words, namespace)
+                    self.handle_to(words, workspace)
                     words = []
                     
                 elif token == "make":
-                    name, words, error = self.process_expression(words[:], namespace)
-                    value, words, error = self.process_expression(words[:], namespace) 
-                    namespace[name[1:]] = value
+                    name, words, error = self.process_expression(words[:], workspace)
+                    value, words, error = self.process_expression(words[:], workspace) 
+                    workspace.handle_make(name[1:], value)
+                    words = []                
+
+                elif token == "name":
+                    value, words, error = self.process_expression(words[:], workspace)
+                    name, words, error = self.process_expression(words[:], workspace) 
+                    workspace.handle_name(value, name[1:])
                     words = []                
 
                 elif token == "setitem":
-                    index, words, error = self.process_expression(words[:], namespace)
+                    index, words, error = self.process_expression(words[:], workspace)
                     name = words[0]
-                    array, words, error = self.process_expression(words[:], namespace) 
-                    value, words, error = self.process_expression(words[:], namespace) 
-                    namespace[name[1:]] = self.handle_set_item([index, array, value])
+                    array, words, error = self.process_expression(words[:], workspace) 
+                    value, words, error = self.process_expression(words[:], workspace) 
+                    workspace.names[name[1:]] = self.handle_set_item([index, array, value], workspace)
                     words = []             
 
                 else:
                     parameters = []
                     for i in range(len(inputs)):
-                        parameter, words, error = self.process_expression(words[:], namespace)                    
+                        parameter, words, error = self.process_expression(words[:], workspace)                    
                         parameters.append(parameter)
                         
                     if default_input != None:
@@ -624,7 +793,7 @@ class Commander:
                         all_ok = function(parameters)
             else:
                 if debug: 
-                    print "No command found in {%s}" % command
+                    print "No COMMAND found in {%s}" % command
                 words = []
             if debug: 
                 print "ALL_OK=", all_ok
@@ -639,20 +808,20 @@ class Commander:
             
         return all_ok
 
-    def handle_logical(self, token, parameters, namespace={}):
+    def handle_logical(self, token, parameters, workspace={}):
         if token == "not":
-            bool = not (parameters[0] == TRUE)
+            boolean = not (parameters[0] == TRUE)
         elif token == "and":
-            bool = (parameters[0] == TRUE) and (parameters[1] == TRUE)
+            boolean = (parameters[0] == TRUE) and (parameters[1] == TRUE)
         elif token == "or":
-            bool = (parameters[0] == TRUE) or (parameters[1] == TRUE)
+            boolean = (parameters[0] == TRUE) or (parameters[1] == TRUE)
             
-        if bool:
+        if boolean:
             return TRUE
         else:
             return FALSE
 
-    def handle_math(self, token, parameters, namespace={}):
+    def handle_math(self, token, parameters, workspace={}):
         if token == "sin":
              value = math.sin(math.radians(parameters[0]))
         elif token == "cos":
@@ -675,7 +844,7 @@ class Commander:
              value = parameters[0] ** parameters[1]
         return value
 
-    def _split_word(self, parameter, namespace={}):
+    def _split_word(self, parameter, workspace={}):
         if parameter[0] !="\"":
             return None, parameter + "is not a word"
         chars = []
@@ -688,7 +857,7 @@ class Commander:
             i = i + 1
         return chars, ""
 
-    def _split_list(self, text, namespace={}):
+    def _split_list(self, text, workspace={}):
         #Within square brackets, words are delimited only by spaces and square brackets.
         #words, error = self.tokenize(parameter[1:-1])
         brackets = 0
@@ -720,7 +889,7 @@ class Commander:
            words.append(word)
         return words, error 
 
-    def _split_array(self, text, namespace={}):
+    def _split_array(self, text, workspace={}):
         #Within square brackets, words are delimited only by spaces and square brackets.
         #words, error = self.tokenize(parameter[1:-1])
         brackets = 0
@@ -758,55 +927,55 @@ class Commander:
         origin = int(origin)
         return words, origin, error 
         
-    def handle_if(self, parameters, namespace={}):
+    def handle_if(self, parameters, workspace={}):
         condition, block = parameters
         all_ok = True
-        if condition == "\"TRUE":
+        if condition == TRUE:
             all_ok = self.handle_command(block[1:-1])
         return all_ok
 
-    def handle_if_else(self, parameters, namespace={}):
+    def handle_if_else(self, parameters, workspace={}):
         condition, block1, block2 = parameters
         all_ok = True
-        if condition == "\"TRUE":
+        if condition == TRUE:
             all_ok = self.handle_command(block1[1:-1])
         else:
             all_ok = self.handle_command(block2[1:-1])
         return all_ok
 
-    def handle_do_while(self, parameters, namespace={}):
+    def handle_do_while(self, parameters, workspace={}):
         condition, block = parameters
         words, error = self.tokenize(condition[1:-1])      
-        result, dummy, error = self.process_expression(words[:], namespace)
+        result, dummy, error = self.process_expression(words[:], workspace)
         all_ok = True
-        while result == "\"TRUE":
+        while result == TRUE:
             all_ok = self.handle_command(block[1:-1])
-            result, dummy, error = self.process_expression(words[:], namespace)
+            result, dummy, error = self.process_expression(words[:], workspace)
         return all_ok
         
-    def handle_lowercase(self, parameters, namespace={}):
+    def handle_lowercase(self, parameters, workspace={}):
         return str(parameters[0]).lower()
 
-    def handle_uppercase(self, parameters, namespace={}):
+    def handle_uppercase(self, parameters, workspace={}):
         return str(parameters[0]).upper()
         
-    def handle_ascii(self, parameters, namespace={}):
+    def handle_ascii(self, parameters, workspace={}):
         return ord(parameters[0])
 
-    def handle_rawascii(self, parameters, namespace={}):
+    def handle_rawascii(self, parameters, workspace={}):
         return ord(parameters[0])
 
-    def handle_char(self, parameters, namespace={}):
+    def handle_char(self, parameters, workspace={}):
         return chr(parameter[0])
 
-    def handle_quoted(self, parameters, namespace={}):
+    def handle_quoted(self, parameters, workspace={}):
         return "\"" + parameters[0]
 
-    def is_word(self, parameters, namespace={}):
+    def is_word(self, parameters, workspace={}):
         thing = parameters[0]
         return self._is_word(thing)
             
-    def _is_word(self, thing, namespace={}):
+    def _is_word(self, thing):
         if not thing:
            return FALSE
         elif str(thing)[0] == "[" and str(thing)[-1]=="]":
@@ -815,7 +984,7 @@ class Commander:
            return False        
         return TRUE
 
-    def is_list(self, parameters, namespace={}):
+    def is_list(self, parameters, workspace={}):
         thing = parameters[0]
         return self._is_list(thing)
             
@@ -824,51 +993,51 @@ class Commander:
            return TRUE
         return FALSE
 
-    def is_array(self, thing, parameters, namespace={}):
+    def is_array(self, thing, parameters, workspace={}):
         thing = parameters[0]
         return self._is_array(thing)
             
-    def _is_array(self, thing):
+    def _is_array(self, thing, workspace={}):
         if thing[0] == "{" and ((thing[-1] == "}") or ("}@" in thing)):
            return TRUE
         return FALSE
 
-    def is_empty(self, parameters, namespace={}):
+    def is_empty(self, parameters, workspace={}):
         thing = parameters[0]
         if not thing or thing == "[]":
            return FALSE
         return TRUE
 
-    def is_backslashed(self, parameters, namespace={}):
+    def is_backslashed(self, parameters, workspace={}):
         thing = parameters[0]
         if thing and thing[0] == "\\":
            return TRUE
         return FALSE
 
-    def is_substring(self, parameters, namespace={}):
+    def is_substring(self, parameters, workspace={}):
         thing1, thing2 = parameters
         if thing1 in thing2:
             return TRUE
         return FALSE
 
-    def is_before(self, parameters, namespace={}):
+    def is_before(self, parameters, workspace={}):
         thing1, thing2 = parameters
         if thing1 < thing2:
            return TRUE
         return FALSE
 
-    def is_equal(self, parameters, namespace={}):
+    def is_equal(self, parameters, workspace={}):
         thing1, thing2 = parameters
         if thing1 == thing2:
             return TRUE
         return FALSE
 
-    def is_not_equal(self, parameters, namespace={}):
-        if not self.is_equal(parameters, namespace):
+    def is_not_equal(self, parameters, workspace={}):
+        if not self.is_equal(parameters, workspace):
             return TRUE
         return FALSE
 
-    def is_number(self, parameters, namespace={}):
+    def is_number(self, parameters, workspace={}):
         thing = parameters[0]
         try:
             i = int(thing)
@@ -876,43 +1045,44 @@ class Commander:
         except:
             return FALSE
 
-    def is_member(self, parameters, namespace={}):
+    def is_member(self, parameters, workspace={}):
+        print "Is member parameters", parameters
         thing1, thing2 = parameters
         #if "thing2" is a list or an array, outputs TRUE if "thing1" is EQUALP 	to a member of "thing2", FALSE otherwise.  If "thing2" is 	a word, outputs TRUE if "thing1" is a one-character word EQUALP to a 	character of "thing2", FALSE otherwise.
-        if self._is_list(thing2, namespace) == TRUE:
-            items, error = self._split_list(thing2, namespace)
+        if self._is_list(thing2) == TRUE:
+            items, error = self._split_list(thing2)
             if thing1 in items:
                 return TRUE
-        elif self._is_array(thing2, namespace) == TRUE:
-            items, origin, error = self._split_array(thing2, namespace)
+        elif self._is_array(thing2) == TRUE:
+            items, origin, error = self._split_array(thing2, workspace)
             if thing1 in items:
                 return TRUE
-        elif self._is_word(thing2, namespace) == TRUE and self._is_word(thing1, namespace) == TRUE:
+        elif self._is_word(thing2) == TRUE and self._is_word(thing1) == TRUE:
             if len(thing1) == 2 and thing1[1:] in thing2:
                 return TRUE
         return FALSE
                 
-    def handle_count(self, parameters, namespace={}):
+    def handle_count(self, parameters, workspace={}):
         thing = parameters[0]
-        if self._is_word(thing, namespace):
-            chars, error = self._split_word(thing, namespace)
+        if self._is_word(thing):
+            chars, error = self._split_word(thing, workspace)
             return len(chars)
-        elif self._is_list(thing, namespace):
-            words, error = self._split_list(thing, namespace)
+        elif self._is_list(thing):
+            words, error = self._split_list(thing, workspace)
             return len(words)
         else:
             return None, "can't split "+str(thing)
 
-    def handle_member(self, parameters, namespace={}):
+    def handle_member(self, parameters, workspace={}):
         member, l = parameters
-        if self._is_word(member, namespace):
-            chars, error = self._split_word(member, namespace)
+        if self._is_word(member):
+            chars, error = self._split_word(member, workspace)
             if member in chars:
                 return TRUE
             else:
                 return FALSE
-        elif self._is_list(member, namespace):
-            words, error = self._split_list(member, namespace)
+        elif self._is_list(member):
+            words, error = self._split_list(member, workspace)
             if member in words:
                 return TRUE
             else:
@@ -920,36 +1090,36 @@ class Commander:
         else:
             return None, "can't split "+str(parameter)
             
-    def handle_item(self, parameters, namespace={}):
+    def handle_item(self, parameters, workspace={}):
         index, thing = parameters
-        return first_and_last(index, thing, namespace)
+        return first_and_last(index, thing, workspace)
 
-    def handle_remove(self, parameters, namespace={}):
+    def handle_remove(self, parameters, workspace={}):
         thing, l = parameters
-        words, error = self._split_list(l, namespace)
+        words, error = self._split_list(l, workspace)
         out = []
         for w in words:
-            if self.is_equal([thing, w], namespace):
+            if self.is_equal([thing, w], workspace):
                 continue
             else:
                 out.append(w)
-        return self.construct_list(out, namespace)
+        return self.construct_list(out, workspace)
 
-    def handle_remdup(self, parameters, namespace={}):
+    def handle_remdup(self, parameters, workspace={}):
         l = parameters[0]
-        words, error = self._split_list(l, namespace)
+        words, error = self._split_list(l, workspace)
         out = []
         for w in words:
             if w in out:
                 continue
             else:
                 out.append(w)
-        return self.construct_list(out, namespace)
+        return self.construct_list(out, workspace)
 
-    def _handle_firsts_etc(self, func, parameters, namespace):
+    def _handle_firsts_etc(self, func, parameters, workspace):
         l = parameters[0]
-        if self._is_list(l, namespace):
-            lists, error = self._split_list(l, namespace)
+        if self._is_list(l):
+            lists, error = self._split_list(l, workspace)
         else:
             lists = []
             print l, "is not a list!"
@@ -957,82 +1127,82 @@ class Commander:
         out = []
         for sub_l in lists:
             out.append(func(sub_l))
-        return self.construct_list(out, namespace)
+        return self.construct_list(out, workspace)
 
-    def handle_firsts(self, parameters, namespace):
-        return self._handle_firsts_etc(self.handle_first, parameters, namespace)
+    def handle_firsts(self, parameters, workspace):
+        return self._handle_firsts_etc(self.handle_first, parameters, workspace)
 
-    def handle_butfirsts(self, parameters, namespace):
-        return self._handle_firsts_etc(self.handle_butfirst, parameters, namespace)
+    def handle_butfirsts(self, parameters, workspace):
+        return self._handle_firsts_etc(self.handle_butfirst, parameters, workspace)
 
-    def handle_lasts(self, parameters, namespace):
-        return self._handle_firsts_etc(self.handle_last, parameters, namespace)
+    def handle_lasts(self, parameters, workspace):
+        return self._handle_firsts_etc(self.handle_last, parameters, workspace)
 
-    def handle_butlasts(self, parameters, namespace):
-        return self._handle_firsts_etc(self.handle_butlast, parameters, namespace)
+    def handle_butlasts(self, parameters, workspace):
+        return self._handle_firsts_etc(self.handle_butlast, parameters, workspace)
 
-    def handle_first(self, parameters, namespace):
-        return self.first_and_last(0, parameters, namespace)
+    def handle_first(self, parameters, workspace):
+        return self.first_and_last(0, parameters, workspace)
 
-    def handle_butfirst(self, parameters, namespace):
-        return self.butfirst_and_butlast([1,None], parameters, namespace)
+    def handle_butfirst(self, parameters, workspace):
+        return self.butfirst_and_butlast([1,None], parameters, workspace)
 
-    def handle_last(self, parameters, namespace):
-        return self.first_and_last(-1, parameters, namespace)
+    def handle_last(self, parameters, workspace):
+        return self.first_and_last(-1, parameters, workspace)
 
-    def handle_butlast(self, parameters, namespace):
-        return self.butfirst_and_butlast([0,-1], parameters, namespace)
+    def handle_butlast(self, parameters, workspace):
+        return self.butfirst_and_butlast([0,-1], parameters, workspace)
         
-    def first_and_last(self, place, parameters, namespace):
-        if self.is_word(parameters, namespace):
-            chars, error = self._split_word(parameters[0], namespace)
+    def first_and_last(self, place, parameters, workspace):
+        if self.is_word(parameters, workspace):
+            chars, error = self._split_word(parameters[0], workspace)
             return "\"" + chars[place]
-        elif self.is_list(parameters, namespace):
-            words, error = self._split_list(parameters[0], namespace)
+        elif self.is_list(parameters, workspace):
+            words, error = self._split_list(parameters[0], workspace)
             return words[place]
         else:
             return None, "can't split "+str(parameters)
 
-    def butfirst_and_butlast(self, places, parameters, namespace):
+    def butfirst_and_butlast(self, places, parameters, workspace):
         splace, eplace = places
-        if self.is_word(parameters, namespace):
-            chars, error = self._split_word(parameters[0], namespace)
+        if self.is_word(parameters, workspace):
+            chars, error = self._split_word(parameters[0], workspace)
             return "\"" + "".join(chars[splace:eplace])
-        elif self.is_list(parameters, namespace):
-            words, error = self._split_list(parameters[0], namespace)
+        elif self.is_list(parameters, workspace):
+            words, error = self._split_list(parameters[0], workspace)
             return "["+ " ".join(words[splace:eplace]) + "]"
         else:
             return None, "can't split "+str(parameters)
 
-    def handle_pick(self, parameters, namespace):
-        if self.is_word(parameters, namespace):
-            chars, error = self._split_word(parameters[0], namespace)
+    def handle_pick(self, parameters, workspace):
+        if self.is_word(parameters, workspace):
+            chars, error = self._split_word(parameters[0], workspace)
             return "\"" + random.choice(chars), ""
-        elif self.is_list(parameters, namespace):
-            words, error = self._split_list(parameters[0], namespace)
+        elif self.is_list(parameters, workspace):
+            words, error = self._split_list(parameters[0], workspace)
             return random.choice(words), ""
         else:
             return None, "can't split "+str(parameters)
 
-    def handle_to(self, words_or_text, namespace, debug=True):
+    def handle_to(self, words_or_text, workspace, debug=True):
         if type(words_or_text) == type([]):
             words = words_or_text
         else:
             text = words_or_text
         if not self.current_proc_name:
             self.current_proc_name = words[0]
-            namespace[words[0]] = [words[1:]] + [[]]
+            self.workspace.procedures[words[0]] = [words[1:]] + [[]]
         elif text == "end" or text == self.HH.to_hebrew("svF"):
             if debug:
                 print "Defined", self.current_proc_name
-                print "Input=", namespace[self.current_proc_name][0]
-                print "Body=\n", "\n".join(namespace[self.current_proc_name][1])
+                print "Input=", self.workspace.procedures[self.current_proc_name][0]
+                print "Body=\n", "\n".join(self.workspace.procedures[self.current_proc_name][1])
             self.current_proc_name = ""
         else:
-            namespace[self.current_proc_name][1].append(text)
-        return namespace
+            self.workspace.procedures[self.current_proc_name][1].append(text)
+        return
 
-    def handle_set_item(self, parameters, namespace={}):
+    def handle_set_item(self, parameters, workspace={}):
         num, array, thing = parameters
         items, origin, error = self._split_array(array)
         items[int(num) - origin] = "[" + thing + "]"
@@ -1041,7 +1211,7 @@ class Commander:
         else:
             return "{" + " ".join(items) + "}@"+str(origin)
         
-    def _parse_word(self, word, namespace={}):
+    def _parse_word(self, word, workspace={}):
         w = str(word)
         if w and w[0] == "\"":
             return w[1:]
@@ -1050,55 +1220,55 @@ class Commander:
         else:
             return w
 
-    def handle_fput(self, parameters, namespace={}):
+    def handle_fput(self, parameters, workspace={}):
         thing, l = parameters
-        if self._is_word(thing, namespace):
-            item = self._parse_word(thing, namespace)
+        if self._is_word(thing):
+            item = self._parse_word(thing, workspace)
         else:
             item = thing
 
-        if self._is_word(l, namespace) and len(item) == 1:
-             return self.construct_word([item, l], namespace)
-        elif self.is_list(l, namespace):
+        if self._is_word(l) and len(item) == 1:
+             return self.construct_word([item, l], workspace)
+        elif self.is_list(l, workspace):
             return "[" + item  + " " + l[1:-1] +"]"
         return "ERROR"
 
-    def handle_lput(self, parameters, namespace={}):
+    def handle_lput(self, parameters, workspace={}):
         thing, l = parameters
-        if self.is_word(thing, namespace):
-            item = self._parse_word(thing, namespace)
+        if self.is_word(thing, workspace):
+            item = self._parse_word(thing, workspace)
         else:
             item = thing
 
-        if self.is_word(l, namespace) and len(item) == 1:
-             return self.construct_word([l, item], namespace)
-        elif self.is_list(l, namespace):
+        if self.is_word(l, workspace) and len(item) == 1:
+             return self.construct_word([l, item], workspace)
+        elif self.is_list(l, workspace):
             return "[" +  l[1:-1] + " " + item +"]"
         return "ERROR"
     
-    def construct_word(self, parameters, namespace={}):
-        return "\"" + ("".join([self._parse_word(p, namespace) for p in parameters]))
+    def construct_word(self, parameters, workspace={}):
+        return "\"" + ("".join([self._parse_word(p, workspace) for p in parameters]))
 
-    def construct_list(self, parameters, namespace={}):
+    def construct_list(self, parameters, workspace={}):
         l = []
         for p in parameters:
-            if self._is_word(p, namespace):
-                l.append(self._parse_word(p, namespace))
-            elif self._is_list(p, namespace):
+            if self._is_word(p):
+                l.append(self._parse_word(p, workspace))
+            elif self._is_list(p):
                 l.append(p)
         return "[" + " ".join(l) + "]"
         
-    def construct_sentence(self, parameters, namespace={}):
+    def construct_sentence(self, parameters, workspace={}):
         print "Sentence", parameters
         l = []
         for p in parameters:
-            if self._is_word(p, namespace):
-                l.append(self._parse_word(p, namespace))
-            elif self._is_list(p, namespace):
+            if self._is_word(p):
+                l.append(self._parse_word(p, workspace))
+            elif self._is_list(p):
                 l.append(p[1:-1])
         return "[" + " ".join(l) + "]"
         
-    def construct_array(self, parameters, namespace={}):
+    def construct_array(self, parameters, workspace={}):
         if len(parameters) == 2:
             size = int(parameters[0])
             origin = int(parameters[1])
@@ -1111,11 +1281,11 @@ class Commander:
             end_bracket = "}@"+str(origin)
         return "{"+" ".join("[]" * size) + end_bracket
         
-    def list_to_array(self, parameters, namespace={}):
+    def list_to_array(self, parameters, workspace={}):
         l = parameters[0]
         return "{"+l[1:-1]+"}"
 
-    def array_to_list(self, parameters, namespace={}):
+    def array_to_list(self, parameters, workspace={}):
         a = parameters[0]
         if a[-1] == "}":
             end = -1
@@ -1125,13 +1295,13 @@ class Commander:
             end = len(temp)
         return "["+a[1:end]+"]"
             
-    def clear_screen(self, parameters=[], namespace={}):
+    def clear_screen(self, parameters=[], workspace={}):
         self.app.clear_screen()
         self.home()
         self.refresh_turtle_flag = True
         return True
 
-    def clean(self, parameters=[], namespace={}):
+    def clean(self, parameters=[], workspace={}):
         self.app.clear_screen()
         self.refresh_turtle_flag = True
         return True
@@ -1352,38 +1522,37 @@ class Commander:
         endy = starty + direction * diry * (distance + 0.0)
         return self._move_to_position(endx, endy)
 
-    def forward(self, parameters, namespace={}):
+    def forward(self, parameters, workspace={}):
         distance = parameters[0]
         return self._move_distance(distance, -1)
         
-    def backward(self, parameters, namespace={}):
+    def backward(self, parameters, workspace={}):
         distance = parameters[0]
         return self._move_distance(distance, 1)
             
-    def right(self, parameters, namespace={}):
+    def right(self, parameters, workspace={}):
         degrees = parameters[0]
         self.turtle_heading = (self.turtle_heading - degrees) % 360
         self.refresh_turtle_flag = True
         return True
 
-    def left(self, parameters, namespace={}):
+    def left(self, parameters, workspace={}):
         degrees = parameters[0]
         self.turtle_heading = (self.turtle_heading + degrees) % 360
         self.refresh_turtle_flag = True
         return True
         
-    def home(self, parameters=[], namespace={}):
+    def home(self, parameters=[], workspace={}):
         self._set_turtle_position(self.turtle_home_position[0], self.turtle_home_position[1])
         self.refresh_turtle_flag = True
         return True
 
-    def set_turtle_view(self, parameters, namespace={}):
-        flag = parameters[0]
+    def set_turtle_view(self, flag, parameters={}, workspace={}):
         self.show_turtle_flag = flag
         self.refresh_turtle_flag = True
         return True
         
-    def handle_turtle_query(self, parameters, namespace={}):
+    def handle_turtle_query(self, parameters, workspace={}):
         query = parameters[0]
         tx , ty = self._get_turtle_position()
         x = tx - self.turtle_home_position[0]
@@ -1403,24 +1572,24 @@ class Commander:
         elif query == "heading":
             return self.turtle_heading
 
-    def towards(self, parameters, namespace={}):
+    def towards(self, parameters, workspace={}):
         pos = parameters[0]
         tokens, error = self.tokenize(pos[1:-1])
-        x, tokens, error = self.process_expression(tokens[:], namespace)
-        y, tokens, error = self.process_expression(tokens[:], namespace)
+        x, tokens, error = self.process_expression(tokens[:], workspace)
+        y, tokens, error = self.process_expression(tokens[:], workspace)
         return self.handle_math("arctan", x/y)
 
-    def set_pen_position(self, pos, parameters, namespace={}):
+    def set_pen_position(self, pos, parameters, workspace={}):
         self.pen_position = pos
         return True
         
-    def set_pen_mode(self, mode, parameters=[], namespace={}):
+    def set_pen_mode(self, mode, parameters=[], workspace={}):
         self.pen_position = PEN_DOWN
         self.pen_mode = mode
         self.app.set_pen_mode(mode)
         return True
 
-    def set_draw_mode(self, parameters, namespace={}):
+    def set_draw_mode(self, parameters, workspace={}):
         mode = parameters[0]
         self.draw_mode = mode
         if mode == MODE_WINDOW:
@@ -1429,12 +1598,12 @@ class Commander:
             self.turtle_position = [x, y]
         return True
 
-    def _parse_color(self, parameter, namespace={}):
+    def _parse_color(self, parameter, workspace={}):
         if self.is_list([parameter]) == TRUE:
             tokens, error = self.tokenize(parameter[1:-1])
-            r, tokens, error = self.process_expression(tokens[:], namespace)
-            g, tokens, error = self.process_expression(tokens[:], namespace)
-            b, tokens, error = self.process_expression(tokens[:], namespace)
+            r, tokens, error = self.process_expression(tokens[:], workspace)
+            g, tokens, error = self.process_expression(tokens[:], workspace)
+            b, tokens, error = self.process_expression(tokens[:], workspace)
         else:
             rgb = self.BASIC_COLORS[int(parameter)]
             r = rgb[0] * 256.0
@@ -1442,65 +1611,65 @@ class Commander:
             b = rgb[2] * 256.0
         return r,g,b
 
-    def set_pen_color(self, parameters, namespace={}):
+    def set_pen_color(self, parameters, workspace={}):
         color = parameters[0]
-        r,g,b = self._parse_color(color, namespace)
+        r,g,b = self._parse_color(color, workspace)
         self.app.set_foreground_color(r, g, b)
         self.pen_color = color
         return True
 
-    def set_screen_color(self, parameters, namespace={}):
+    def set_screen_color(self, parameters, workspace={}):
         color = parameters[0]        
-        r,g,b = self._parse_color(color, namespace)
+        r,g,b = self._parse_color(color, workspace)
         self.app.set_background_color(r, g, b)
         self.screen_color = color
         return True
 
-    def set_heading(self, parameters, namespace={}):
+    def set_heading(self, parameters, workspace={}):
         angle = parameters[0]
         self.turtle_heading = (angle + 180) % 360
         return True
 
-    def set_x(self, parameters, namespace={}):
+    def set_x(self, parameters, workspace={}):
         x = parameters[0]
         return self._move_to_position(x + self.turtle_home_position[0], self._get_turtle_position()[1])
 
-    def set_y(self, parameters, namespace={}):
+    def set_y(self, parameters, workspace={}):
         y = parameters[0]
         return self._move_to_position(self._get_turtle_position()[0], y + self.turtle_home_position[1])
 
-    def set_xy(self, parameters, namespace={}):
+    def set_xy(self, parameters, workspace={}):
         x, y = parameters
         return self._move_to_position(x + self.turtle_home_position[0], y + self.turtle_home_position[1])
         
-    def go_to(self, parameters, namespace={}):
+    def go_to(self, parameters, workspace={}):
         pos = parameters[0]
         tokens, error = self._split_list(pos)
-        x, words, error = self.process_expression(tokens[:], namespace)
-        y, words, error = self.process_expression(words[:], namespace)
-        return self.set_xy([int(x), int(y)], namespace)        
+        x, words, error = self.process_expression(tokens[:], workspace)
+        y, words, error = self.process_expression(words[:], workspace)
+        return self.set_xy([int(x), int(y)], workspace)        
 
-    def set_pen_size(self, parameters, namespace={}):
-        print parameters
-        width = self.handle_first(parameters, namespace)
+    def set_pen_size(self, parameters, workspace={}):
+        width = self.handle_first(parameters, workspace)
         self.app.set_line_width(int(width))
         return True
 
-    def repeat_loop(self, parameters, namespace={}):
+    def repeat_loop(self, parameters, workspace={}):
         times, loop_body = parameters
         all_ok = True
         for i in xrange(times):
-            namespace['repcount'] = i + 1
-            all_ok = self.handle_command(loop_body, namespace={})
+            self.current_repcount = i + 1
+            all_ok = self.handle_command(loop_body, workspace={})
         return all_ok
         
-    def for_loop(self, parameters, namespace={}):
+    def for_loop(self, parameters, workspace={}):
+        print "For", workspace.names
         loop_header, loop_body = parameters
         words, error = self.tokenize(loop_header[1:-1])
         if not error:
             variable = words[0]
-            start, words, error = self.process_expression(words[1:], namespace)
-            end, words, error = self.process_expression(words, namespace)
+            start, words, error = self.process_expression(words[1:], workspace)
+            end, words, error = self.process_expression(words, workspace)
             if words:
                 step = None
             else:
@@ -1509,23 +1678,24 @@ class Commander:
                 else:
                     step = -1
 
-            namespace[variable] = start
+            workspace.names[variable] = start
+            #workspace.handle_proc_input(variable, start)
             if end > start:
-                while namespace[variable] <= end:
+                while workspace.names[variable] <= end:
                     if step == None:
-                        current_step, dummy, error = self.process_expression(words, namespace)
+                        current_step, dummy, error = self.process_expression(words, workspace)
                     else:
                         current_step = step
-                    all_ok = self.handle_command(loop_body[1:-1], namespace)
-                    namespace[variable] = namespace[variable] + current_step
+                    all_ok = self.handle_command(loop_body[1:-1], workspace)
+                    workspace.names[variable] = workspace.names[variable] + current_step
             else:
-                while namespace[variable] >= end:
+                while workspace.names[variable] >= end:
                     if step == None:
-                        current_step, dummy, error = self.process_expression(words, namespace)
+                        current_step, dummy, error = self.process_expression(words, workspace)
                     else:
                         current_step = step
-                    all_ok = self.handle_command(loop_body[1:-1], namespace)
-                    namespace[variable] = namespace[variable] + current_step
+                    all_ok = self.handle_command(loop_body[1:-1], workspace)
+                    workspace.names[variable] = workspace.names[variable] + current_step
         else:
             print "Error:", error
             return False
@@ -1564,7 +1734,7 @@ class Commander:
         self.app.draw_turtle(head, toe1, toe2)
         return True
         
-    def handle_label(self, parameters, namespace={}):
+    def handle_label(self, parameters, workspace={}):
         text = parameters[0]
         startx, starty = self._get_turtle_position()
         if self._is_word(text):
@@ -1581,18 +1751,18 @@ class Commander:
         self.turtle_xposition = x
         self.turtle_yposition = y
         
-    def show_output(self, output, namespace={}):
+    def show_output(self, output, workspace={}):
         #Prints the input or inputs like PRINT, except that if an input is a list it is printed inside square brackets
-        return self.print_output(output, mode = MODE_SHOW)
+        return self.print_output(output, mode = MODE_SHOW, workspace=workspace)
 
-    def type_output(self, output, namespace={}):
+    def type_output(self, output, workspace={}):
         #Prints the input or inputs like PRINT, except that no newline character is printed at the end and multiple inputs are not separated by spaces.
-        return self.print_output(output, mode = MODE_TYPE)
+        return self.print_output(output, mode = MODE_TYPE, workspace=workspace)
         
-    def print_output(self, parameters, mode=MODE_PRINT, namespace={}):
+    def print_output(self, parameters, mode=MODE_PRINT, workspace={}):
         output = parameters[0]
         words, error = self.tokenize(output)
-        out, words, error = self.process_expression(words[:], namespace)
+        out, words, error = self.process_expression(words[:], workspace)
         if self._is_word(out):
             out = self._parse_word(out)
         elif self._is_list(out) and (mode != MODE_SHOW):
@@ -1639,8 +1809,6 @@ class App:
         self.entry = gtk.Entry()
         self.entry.connect("activate", self.handle_command)
         self.entry.connect("key-press-event", self.handle_keypress)
-        #vbox.pack_start(self.scrolled, 0,0,False)
-        #vbox.pack_start(self.textview, 0,0,False)
         vbox.pack_start(self.vpaned, 0,0,False)
         vbox.pack_start(self.label, 0,0,False)
         vbox.pack_start(self.entry, 0,0,False)

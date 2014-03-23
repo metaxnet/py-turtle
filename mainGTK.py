@@ -84,7 +84,7 @@ class Workspace:
         return True
         
     def handle_make(self, varname, value):
-        if self.outer_workspace:
+        if self.outer_workspace is not None:
             all_ok = self.outer_workspace.handle_make(varname, value)
         else:
             self.names[varname] = value
@@ -92,7 +92,7 @@ class Workspace:
         return all_ok
 
     def handle_name(self, value, varname):
-        if self.outer_workspace:
+        if self.outer_workspace is not None:
             all_ok = self.outer_workspace.handle_name(value, varname)
         else:
             self.names[varname] = value
@@ -102,7 +102,7 @@ class Workspace:
     def handle_thing(self, varname):
         if varname in self.names:
             return self.names[varname]
-        elif self.outer_workspace:
+        elif self.outer_workspace is not None:
             return self.outer_workspace.handle_thing(varname)
         else:
             return None
@@ -110,7 +110,7 @@ class Workspace:
     def get_procedure(self, procname):
         if procname in self.procedures:
             return self.procedures[procname]
-        elif self.outer_workspace:
+        elif self.outer_workspace is not None:
             return self.outer_workspace.get_procedure(procname)
         else:
             return None
@@ -121,28 +121,28 @@ class Workspace:
     def handle_procedurep(self, name):
         if (name in self.procedures()) or (name in self.primitives()):
             return TRUE
-        elif self.outer_workspace:
+        elif self.outer_workspace is not None:
             return self.outer_workspace.handle_procedurep(name)
         return FALSE
 
     def handle_primitivep(self, name):
         if name in self.primitives():
             return TRUE
-        elif self.outer_workspace:
+        elif self.outer_workspace is not None:
             return self.outer_workspace.handle_primitivep(name)
         return FALSE
 
     def handle_definedp(self, name):
         if name in self.procedures():
             return TRUE
-        elif self.outer_workspace:
+        elif self.outer_workspace is not None:
             return self.outer_workspace.handle_definedp(name)
         return FALSE
 
     def handle_namep(self, name):
         if name in self.names():
             return TRUE
-        elif self.outer_workspace:
+        elif self.outer_workspace is not None:
             return self.outer_workspace.handle_namep(name)
 
         return FALSE
@@ -150,7 +150,7 @@ class Workspace:
     def handle_plistp(self, name):
         if name in self.plists():
             return TRUE
-        elif self.outer_workspace:
+        elif self.outer_workspace is not None:
             return self.outer_workspace.handle_plistp(name)
         return FALSE
 
@@ -502,7 +502,7 @@ class Commander:
             print "TOKENS=", tokens
         return tokens, error        
         
-    def process_expression(self, words, workspace={}, parameter_only=False, greedy = False, debug=False):
+    def process_expression(self, words, workspace={}, parameter_only=False, greedy = False, debug=True):
         if debug:
             print "Process expression: Words=", words
         if not workspace:
@@ -519,7 +519,7 @@ class Commander:
 
         elif token in workspace._get_procedures():
             if debug: 
-                print "Handling proc:", workspace.procedures[token]
+                print "Handling proc:", token
 
             new_workspace = Workspace(workspace)
             for variable in workspace.get_procedure(token)[0]:
@@ -531,12 +531,11 @@ class Commander:
             all_ok = True
 
             for line in workspace.get_procedure(token)[1]:
-                if all_ok:
+                if all_ok is not None:
                     all_ok = self.handle_command(line, new_workspace)
                 else:
                     break
-            all_ok = True
-
+            value = all_ok
             
         elif token in self.commands: 
             token = self.commands[token][0]
@@ -657,7 +656,7 @@ class Commander:
                 if not wait_for_complete_line_flag:
                     self.handle_command(command, workspace)
                 
-    def handle_command(self, text, workspace={}, debug=False):
+    def handle_command(self, text, workspace={}, debug=True):
         all_ok = True
         if not text:
             return all_ok
@@ -707,7 +706,7 @@ class Commander:
                     print new_workspace.names
                 all_ok = True
                 for line in workspace.get_procedure(command)[1]:
-                    if all_ok:
+                    if all_ok is not None:
                         all_ok = self.handle_command(line, new_workspace)
                     else:
                         break
@@ -730,12 +729,12 @@ class Commander:
                 elif token == "output":
                     print "Outputting: NOTHING DONE WITH OUTPUT YET!"
                     out, words, error =  self.process_expression(words, workspace)
-                    return False
+                    return out
 
                 elif token == "stop":
                     words = []
                     return_value = False
-                    return False
+                    return None
                     
                 elif token == "load":
                     filename, words, error =  self.process_expression(words, workspace)
@@ -793,7 +792,7 @@ class Commander:
                         all_ok = function(parameters)
             else:
                 if debug: 
-                    print "No COMMAND found in {%s}" % command
+                    print "No COMMAND found in {%s}" % words[0]
                 words = []
             if debug: 
                 print "ALL_OK=", all_ok
@@ -1091,8 +1090,9 @@ class Commander:
             return None, "can't split "+str(parameter)
             
     def handle_item(self, parameters, workspace={}):
+        print "Handle item", parameters
         index, thing = parameters
-        return first_and_last(index, thing, workspace)
+        return self.first_and_last(index-1, [thing], workspace)
 
     def handle_remove(self, parameters, workspace={}):
         thing, l = parameters
@@ -1154,17 +1154,23 @@ class Commander:
         return self.butfirst_and_butlast([0,-1], parameters, workspace)
         
     def first_and_last(self, place, parameters, workspace):
-        if self.is_word(parameters, workspace):
-            chars, error = self._split_word(parameters[0], workspace)
+        place = int(place)
+        print parameters
+        if self._is_word(parameters[0]):
+            chars, error = self._split_word(parameters[0])
+            print "Chars=", chars, "Place=", place
             return "\"" + chars[place]
-        elif self.is_list(parameters, workspace):
-            words, error = self._split_list(parameters[0], workspace)
+        elif self._is_list(parameters[0]):
+            words, error = self._split_list(parameters[0])
+            print "Words=", words, "Place=", place
             return words[place]
         else:
             return None, "can't split "+str(parameters)
 
     def butfirst_and_butlast(self, places, parameters, workspace):
         splace, eplace = places
+        splace = int(splace)
+        eplace = int(eplace)
         if self.is_word(parameters, workspace):
             chars, error = self._split_word(parameters[0], workspace)
             return "\"" + "".join(chars[splace:eplace])
@@ -1250,6 +1256,7 @@ class Commander:
         return "\"" + ("".join([self._parse_word(p, workspace) for p in parameters]))
 
     def construct_list(self, parameters, workspace={}):
+        print "List: Parameters=", parameters
         l = []
         for p in parameters:
             if self._is_word(p):

@@ -33,6 +33,8 @@ SCREEN_HEIGHT = 500
 TRUE = "\"TRUE"
 FALSE = "\"FALSE"
 
+WS = "Workspace"
+
 NUM = 0
 WRD = 1
 LST = 2
@@ -62,6 +64,7 @@ class HebrewHandler:
 
 class Workspace:
     def __init__(self, outer_workspace=None):
+        self.primitives = {}
         self.procedures = {}
         self.names = {}
         self.plists = {}
@@ -79,12 +82,26 @@ class Workspace:
     def _as_list(self, l):
         return "["+" ".join(l)+"]"
         
+    def _is_in(self, item, dic_name):
+        l = self.__dict__[dic_name].keys()
+        lower_l = [x.lower() for x in l]
+        if item.lower() in lower_l:
+            return l[lower_l.index(item.lower())]
+        else:
+            return None
+
     def handle_proc_input(self, varname, value):
         self.names[varname] = value
         return True
         
     def handle_make(self, varname, value):
-        if self.outer_workspace is not None:
+        if varname[0] == "\"":
+            varname = varname[1:]
+        fixed = self._is_in(varname, "names")
+        if fixed is not None:
+            self.names[fixed] = value
+            all_ok = True
+        elif self.outer_workspace is not None:
             all_ok = self.outer_workspace.handle_make(varname, value)
         else:
             self.names[varname] = value
@@ -92,7 +109,13 @@ class Workspace:
         return all_ok
 
     def handle_name(self, value, varname):
-        if self.outer_workspace is not None:
+        if varname[0] == "\"":
+            varname = varname[1:]
+        fixed = self._is_in(varname, "names")
+        if fixed is not None:
+            self.names[fixed] = value
+            all_ok = True
+        elif self.outer_workspace is not None:
             all_ok = self.outer_workspace.handle_name(value, varname)
         else:
             self.names[varname] = value
@@ -100,59 +123,106 @@ class Workspace:
         return all_ok
         
     def handle_thing(self, varname):
-        if varname in self.names:
-            return self.names[varname]
+        fixed = self._is_in(varname, "names")
+        if fixed is not None:
+            return self.names[fixed]
         elif self.outer_workspace is not None:
             return self.outer_workspace.handle_thing(varname)
         else:
             return None
             
     def get_procedure(self, procname):
-        if procname in self.procedures:
-            return self.procedures[procname]
+        fixed = self._is_in(procname, "procedures")
+        if fixed is not None:
+            return self.procedures[fixed]
         elif self.outer_workspace is not None:
             return self.outer_workspace.get_procedure(procname)
         else:
             return None
+
+    def get_primitive(self, name):
+        fixed = self._is_in(name, "primitives")
+        if fixed == None and self.outer_workspace is not None:
+            return self.outer_workspace.get_primitive(name)
+        elif fixed is not None:
+            return self.primitives[fixed]
+        else:
+            return None
+        #if procname in self.procedures:
+        #    return self.procedures[procname]
+        #elif self.outer_workspace is not None:
+        #    return self.outer_workspace.get_procedure(procname)
+        #else:
+        #    return None
         
-    def handle_global(self, parameters):
-        print "GLOBAL:", parameters
+    def handle_global(self, varname):
+        if self.outer_workspace is not None:
+            return self.handle_global(varname)
+        else:
+            if self._is_in(varname, "names") is not None:
+                pass
+            else:
+                self.names[varname] = None
+            return True
+        
+    def _find_in_recursive(self, name, dic_name):
+        if self._is_in(name, dic_name) is not None:
+            return TRUE
+        elif self.outer_workspace is not None:
+            return self.outer_workspace._find_in_recursive(name, dic_name)
+        return FALSE
         
     def handle_procedurep(self, name):
-        if (name in self.procedures()) or (name in self.primitives()):
+        if self.handle_primitivep(name) == TRUE:
             return TRUE
-        elif self.outer_workspace is not None:
-            return self.outer_workspace.handle_procedurep(name)
-        return FALSE
+        elif self.handle_definedp(name) == TRUE:
+            return TRUE
+        else:
+            return FALSE
+        #if (name in self.procedures()) or (name in self.primitives()):
+        #    return TRUE
+        #elif self.outer_workspace is not None:
+        #    return self.outer_workspace.handle_procedurep(name)
+        #return FALSE
 
     def handle_primitivep(self, name):
-        if name in self.primitives():
-            return TRUE
-        elif self.outer_workspace is not None:
-            return self.outer_workspace.handle_primitivep(name)
-        return FALSE
+        return self._find_in_recursive(name, "primitives")
+        #if name in self.primitives():
+        #    return TRUE
+        #elif self.outer_workspace is not None:
+        #    return self.outer_workspace.handle_primitivep(name)
+        #return FALSE
 
     def handle_definedp(self, name):
-        if name in self.procedures():
-            return TRUE
-        elif self.outer_workspace is not None:
-            return self.outer_workspace.handle_definedp(name)
-        return FALSE
+        return self._find_in_recursive(name, "procedures")
+        #if name in self.procedures():
+        #    return TRUE
+        #elif self.outer_workspace is not None:
+        #    return self.outer_workspace.handle_definedp(name)
+        #return FALSE
 
     def handle_namep(self, name):
-        if name in self.names():
-            return TRUE
-        elif self.outer_workspace is not None:
-            return self.outer_workspace.handle_namep(name)
-
-        return FALSE
+        return self._find_in_recursive(name, "names")
+        #if name in self.names():
+        #    return TRUE
+        #elif self.outer_workspace is not None:
+        #    return self.outer_workspace.handle_namep(name)#
+        #
+        #return FALSE
 
     def handle_plistp(self, name):
-        if name in self.plists():
-            return TRUE
-        elif self.outer_workspace is not None:
-            return self.outer_workspace.handle_plistp(name)
-        return FALSE
+        return self._find_in_recursive(name, "plists")
+        #if name in self.plists():
+        #    return TRUE
+        #elif self.outer_workspace is not None:
+        #    return self.outer_workspace.handle_plistp(name)
+        #return FALSE
+        
+    def handle_local(self, name):
+        fixed = self._is_in(name, "names")
+        if fixed is None:
+            self.names[name] = None
+        return True
 
     def handle_contents(self):
         procs = self.handle_procedures()
@@ -243,7 +313,7 @@ class Commander:
             (["pick"],               ["wlvF"],                  [TNG],         self.handle_pick,          None),\
             (["quoted"],             ["kmile"],                 [TNG],         self.handle_quoted,        None),\
             #MUTATORS
-            (["setitem"],            ["qbo.aibr"],              [NUM, ARR, TNG], self.handle_set_item,    None),\
+            (["setitem"],            ["qbo.aibr"],              [NUM, ARR, TNG], None,    None),\
             #TURTLE AND WINDOW CONTROL missing FILL,LABEL,TEXTSCREEN,FULLSCREEN,SPLITSCREEN,SETSCRUNCH,REFRESH,NOREFRESH
             (["showturtle", "st"],   ["erae.xb","erx"],         [],            self.set_turtle_view,    TURTLE_SHOW),\
             (["hideturtle", "ht"],   ["estr.xb","esx"],         [],            self.set_turtle_view,    TURTLE_HIDE),\
@@ -271,6 +341,7 @@ class Commander:
             (["setheading", "seth"], ["lkivvN"],                [NUM],         self.set_heading,        None),\
             (["setpensize"],         ["qbo.gvdl.ou"],           [LST],         self.set_pen_size,       None),\
             (["home"],               ["ebite"],                 [],            self.home,               None),\
+            (["circle"],             ["oigvl"],                 [NUM],         self.handle_circle,      None),\
             #TRANSMITTERS
             (["print", "pr"],        ["edfs", "ed"],            [TNG],         self.print_output,       None),\
             (["type"],               ["edfs.xmvd"],             [TNG],         self.type_output,        None),\
@@ -319,7 +390,10 @@ class Commander:
             (["setpencolor", "setpc"], ["qbo.xbo.ou"],          [TNG],         self.set_pen_color,        None),\
             (["setscreencolor", "setsc"], ["qbo.xbo.msK"],      [TNG],         self.set_screen_color,     None),\
             (["and", "AND"],         ["gM"],                    [TRU,TRU],     self.handle_logical,       "and"),\
-            (["make"],               ["qbo"],                   [],            None,                      None),\
+            (["make"],               ["qbo.at"],                [WRD,TNG],     self.handle_workspace,     [WS,"make"]),\
+            (["name"],               ["qra.l"],                 [TNG,WRD],     self.handle_workspace,     [WS,"name"]),\
+            (["local"],              ["mqvmi"],                 [WRD],         self.handle_workspace,     [WS,"local"]),\
+            (["global"],             ["ovlmi"],                 [WRD],         self.handle_workspace,     [WS,"global"]),\
             (["end"],                ["svF"],                   [],            None,                      None),\
             (["to"],                 ["lmd"],                   [],            None,                      None),\
             (["load"],               ["uoN"],                   [],            None,                      None),\
@@ -502,7 +576,7 @@ class Commander:
             print "TOKENS=", tokens
         return tokens, error        
         
-    def process_expression(self, words, workspace={}, parameter_only=False, greedy = False, debug=True):
+    def process_expression(self, words, workspace={}, parameter_only=False, greedy = False, debug=False):
         if debug:
             print "Process expression: Words=", words
         if not workspace:
@@ -513,11 +587,16 @@ class Commander:
         value = None
         if debug:
             print "Processing expression: Token", token
+            print token, "in self.commands?", workspace.handle_primitivep(token)
+            print token, "in procedures?", workspace.handle_definedp(token)
+            print token, "is a list?", self._is_list(token)
+            print token, "is a word?", self._is_word(token)
+            print token, "is an array?", self._is_array(token)
         
         if token == "repcount":
             value = self.current_repcount
 
-        elif token in workspace._get_procedures():
+        elif workspace.handle_definedp(token) == TRUE: #in workspace._get_procedures():
             if debug: 
                 print "Handling proc:", token
 
@@ -532,34 +611,42 @@ class Commander:
 
             for line in workspace.get_procedure(token)[1]:
                 if all_ok is not None:
-                    all_ok = self.handle_command(line, new_workspace)
+                    all_ok = self.handle_command_line(line, new_workspace)
                 else:
                     break
             value = all_ok
             
-        elif token in self.commands: 
-            token = self.commands[token][0]
-            inputs = self.commands[token][1]
-            function = self.commands[token][2]
-            default_input = self.commands[token][3]
+        elif workspace.handle_primitivep(token) == TRUE: #token in self.commands: 
+            #ixed = workspace._is_in(token, "primitives")
+            #rint "Fixed=", fixed
+            #f fixed is not None:
+            data = workspace.get_primitive(token)
+            token = data[0] #self.commands[fixed][0]
+            inputs = data[1] #self.commands[token][1]
+            function = data[2] #self.commands[token][2]
+            default_input = data[3] #self.commands[token][3]
+
+            if type (default_input) == type([]) and WS in default_input:
+                default_input[default_input.index(WS)] = workspace
+
             if greedy:
                 parameters = []
                 while words:
-                    parameter, words, error = self.process_expression(words, workspace, parameter_only=True)                    
+                    parameter, words, error = self.process_expression(words, workspace, parameter_only=False)                    
                     parameters.append(parameter)
             else:
                 parameters = []
                 for i in range(len(inputs)):
-                    parameter, words, error = self.process_expression(words, workspace, parameter_only=True)
+                    parameter, words, error = self.process_expression(words, workspace, parameter_only=False)
                     parameters.append(parameter)
 
             if default_input != None:
-                value = function(default_input, parameters, workspace)
+                value = function(default_input, parameters) #, workspace)
             else:
-                value = function(parameters, workspace)
+                value = function(parameters) #, workspace)
 
         elif token[0] == ":":
-            if token[1:] in workspace._get_names():
+            if workspace.handle_namep(token[1:]): #in workspace._get_names():
                 value = workspace.handle_thing(token[1:])
             else:
                 error = self.HH.to_hebrew("ani la ivdo me ze ")+token
@@ -576,25 +663,24 @@ class Commander:
                 print "New_tokens=", new_tokens, "Error=", error
             value, dummy, error = self.process_expression(new_tokens, workspace, greedy=True)
         
-        elif token[0] == "[" and token[-1] == "]":
+        elif self._is_list(token) == TRUE: # == "[" and token[-1] == "]":
             value = token
             
-        elif token[0] == "{" and token[-1] == "}":
+        elif self._is_array(token) == TRUE: #token[0] == "{" and token[-1] == "}":
             value = token
 
-        elif token[0] == "{" and ("}@" in token):
-            value = token
-        
         else:
             try:
                 value = float(token)           
             except:
                 value = 0.0
-            
+
         if words and words[0] in "+-/*%" and not parameter_only:
             operator = words[0]
             value2, words, error = self.process_expression(words[1:], workspace)
-
+            if self.is_number([value]) == TRUE and self.is_number([value2]) == TRUE:
+                value = float(value)
+                value2 = float(value2)
             if operator == "+":
                 value = value + value2
             elif operator == "-":
@@ -654,14 +740,16 @@ class Commander:
                 i = i + 1
                 command = command + line
                 if not wait_for_complete_line_flag:
-                    self.handle_command(command, workspace)
+                    self.handle_command_line(command, workspace)
                 
-    def handle_command(self, text, workspace={}, debug=True):
+    def handle_command_line(self, text, workspace={}, debug=False):
         all_ok = True
         if not text:
             return all_ok
         if not workspace:
             workspace = self.workspace
+        if debug:
+            print "Handling", text
 
         # The two-character sequence #! at the beginning of a line also starts a comment.
         # A semicolon begins a comment in an instruction line.  Logo ignores characters from the semicolon to the end of the line.  A tilde as the last character still indicates a continuation line, but not a continuation of the comment.
@@ -682,20 +770,35 @@ class Commander:
         else:
             words, error = self.tokenize(unitext)
             if error == 0:
-                return True
+                all_ok = True
+            else:
+                all_ok = self.handle_command(words, workspace)
 
+        self.command_loop_level = self.command_loop_level - 1
+
+        if self.command_loop_level == 0:
+            if self.show_turtle_flag:
+                self.draw_turtle()
+        while gtk.events_pending():
+            gtk.main_iteration(False)
+        return all_ok
+
+    def handle_command(self, words, workspace=None, debug=False):
+        all_ok = True
+        if workspace is None:
+            workspace = self.workspace
         while words:
             if debug: 
-                print "Words=", words, error
-                keys = self.commands.keys()
-                keys.sort()
-                print keys
+                print "Words=", words
             while not words[0]:
                 words = words[1:]
             if debug:
-                print words[0], "in self.commands?", words[0] in self.commands
-                print words[0], "in procedures?", words[0] in workspace._get_procedures()
-            if words[0] in workspace._get_procedures():
+                print words[0], "in self.commands?", workspace.handle_primitivep(words[0])
+                print words[0], "in procedures?", workspace.handle_definedp(words[0])
+                print words[0], "is a list?", self._is_list(words[0])
+                print words[0], "is a word?", self._is_word(words[0])
+                print words[0], "is an array?", self._is_array(words[0])
+            if workspace.handle_definedp(words[0]) == TRUE: #words[0] in workspace._get_procedures():
                 command = words[0]
                 words = words[1:]
                 new_workspace = Workspace(workspace)
@@ -707,33 +810,41 @@ class Commander:
                 all_ok = True
                 for line in workspace.get_procedure(command)[1]:
                     if all_ok is not None:
-                        all_ok = self.handle_command(line, new_workspace)
+                        all_ok = self.handle_command_line(line, new_workspace)
                     else:
                         break
                 all_ok = True
                         
-            elif words[0] in self.commands:
+            elif workspace.handle_primitivep(words[0]) == TRUE: #words[0] in self.commands:
                 if debug: 
                     print "Process command:", words[0]
                 command = words[0]
                 words = words[1:]
-                token = self.commands[command][0]
-                inputs = self.commands[token][1]
-                function = self.commands[token][2]
-                default_input = self.commands[token][3]
+                data = workspace.get_primitive(command)
+                #print "Primitive=", data
+                token = data[0] #self.commands[fixed][0]
+                inputs = data[1] #self.commands[token][1]
+                function = data[2] #self.commands[token][2]
+                default_input = data[3] #self.commands[token][3]
+                #token = self.commands[command][0]
+                #inputs = self.commands[token][1]
+                #function = self.commands[token][2]
+                #default_input = self.commands[token][3]
+                if type (default_input) == type([]) and WS in default_input:
+                    default_input[default_input.index(WS)] = workspace
                 
                 if token == "for":
                     self.for_loop([words[0], words[1]], workspace)
                     words = words[2:]
                     
                 elif token == "output":
-                    print "Outputting: NOTHING DONE WITH OUTPUT YET!"
+                    #print "Outputting: NOTHING DONE WITH OUTPUT YET!"
                     out, words, error =  self.process_expression(words, workspace)
                     return out
 
                 elif token == "stop":
                     words = []
-                    return_value = False
+                    return_value = None
                     return None
                     
                 elif token == "load":
@@ -742,7 +853,7 @@ class Commander:
                     # REPLACE THIS WITH HANDLE_TEXT and treat open brackets as indication of line continuation
                     lines = [l.replace("\r", "") for l in f.readlines()]
                     for line in lines:
-                        all_ok = self.handle_command(line[:-1])
+                        all_ok = self.handle_command_line(line[:-1])
 
                 elif token == "do.while":
                     condition = words[1]
@@ -760,51 +871,62 @@ class Commander:
                     self.handle_to(words, workspace)
                     words = []
                     
-                elif token == "make":
-                    name, words, error = self.process_expression(words[:], workspace)
-                    value, words, error = self.process_expression(words[:], workspace) 
-                    workspace.handle_make(name[1:], value)
-                    words = []                
+                #elif token == "make":
+                #    name, words, error = self.process_expression(words[:], workspace)
+                #    value, words, error = self.process_expression(words[:], workspace) 
+                #    workspace.handle_make(name[1:], value)
+                #    words = []                
 
-                elif token == "name":
-                    value, words, error = self.process_expression(words[:], workspace)
-                    name, words, error = self.process_expression(words[:], workspace) 
-                    workspace.handle_name(value, name[1:])
-                    words = []                
+                #elif token == "name":
+                #    value, words, error = self.process_expression(words[:], workspace)
+                #    name, words, error = self.process_expression(words[:], workspace) 
+                #    workspace.handle_name(value, name[1:])
+                #    words = []                
 
                 elif token == "setitem":
                     index, words, error = self.process_expression(words[:], workspace)
                     name = words[0]
                     array, words, error = self.process_expression(words[:], workspace) 
                     value, words, error = self.process_expression(words[:], workspace) 
-                    workspace.names[name[1:]] = self.handle_set_item([index, array, value], workspace)
-                    words = []             
+                    workspace.handle_make(name[1:], self.handle_set_item([index, array, value]))
 
                 else:
                     parameters = []
+                    #print "Inputs=", inputs, words
                     for i in range(len(inputs)):
                         parameter, words, error = self.process_expression(words[:], workspace)                    
                         parameters.append(parameter)
+                    #print "Parameters=", parameters
                         
                     if default_input != None:
                         all_ok = function(default_input, parameters)
                     else:
                         all_ok = function(parameters)
             else:
-                if debug: 
-                    print "No COMMAND found in {%s}" % words[0]
-                words = []
+                print "No COMMAND found in {%s}" % words[0]
+                all_ok = False
             if debug: 
                 print "ALL_OK=", all_ok
 
-        self.command_loop_level = self.command_loop_level - 1
-
-        if self.command_loop_level == 0:
-            if self.show_turtle_flag:
-                self.draw_turtle()
-        while gtk.events_pending():
-            gtk.main_iteration(False)
-            
+        return all_ok
+        
+    def handle_workspace(self, workspace_and_command, parameters):
+        workspace, command = workspace_and_command
+        while parameters:
+            if command == "make":
+                all_ok = workspace.handle_make(parameters[0], parameters[1])
+                parameters = parameters[2:]
+            elif command == "name":
+                all_ok = workspace.handle_name(parameters[0], parameters[1])
+                parameters = parameters[2:]
+            elif command == "local":
+                all_ok = workspace.handle_local(parameters[0])
+                parameters = parameters[1:]
+            elif command == "global":
+                all_ok = workspace.handle_global(parameters[0])
+                parameters = parameters[1:]
+        if all_ok is None:
+            print "All ok is none after", command
         return all_ok
 
     def handle_logical(self, token, parameters, workspace={}):
@@ -925,21 +1047,26 @@ class Commander:
         words = [w for w in words if w]
         origin = int(origin)
         return words, origin, error 
+
+    def handle_circle(self, parameters):
+        x, y = self._get_turtle_position()
+        diameter = parameters[0]
+        self.app.draw_circle(x, y, diameter)
         
     def handle_if(self, parameters, workspace={}):
         condition, block = parameters
         all_ok = True
         if condition == TRUE:
-            all_ok = self.handle_command(block[1:-1])
+            all_ok = self.handle_command_line(block[1:-1], workspace)
         return all_ok
 
     def handle_if_else(self, parameters, workspace={}):
         condition, block1, block2 = parameters
         all_ok = True
         if condition == TRUE:
-            all_ok = self.handle_command(block1[1:-1])
+            all_ok = self.handle_command_line(block1[1:-1], workspace)
         else:
-            all_ok = self.handle_command(block2[1:-1])
+            all_ok = self.handle_command_line(block2[1:-1], workspace)
         return all_ok
 
     def handle_do_while(self, parameters, workspace={}):
@@ -948,7 +1075,7 @@ class Commander:
         result, dummy, error = self.process_expression(words[:], workspace)
         all_ok = True
         while result == TRUE:
-            all_ok = self.handle_command(block[1:-1])
+            all_ok = self.handle_command_line(block[1:-1])
             result, dummy, error = self.process_expression(words[:], workspace)
         return all_ok
         
@@ -1045,7 +1172,6 @@ class Commander:
             return FALSE
 
     def is_member(self, parameters, workspace={}):
-        print "Is member parameters", parameters
         thing1, thing2 = parameters
         #if "thing2" is a list or an array, outputs TRUE if "thing1" is EQUALP 	to a member of "thing2", FALSE otherwise.  If "thing2" is 	a word, outputs TRUE if "thing1" is a one-character word EQUALP to a 	character of "thing2", FALSE otherwise.
         if self._is_list(thing2) == TRUE:
@@ -1090,7 +1216,6 @@ class Commander:
             return None, "can't split "+str(parameter)
             
     def handle_item(self, parameters, workspace={}):
-        print "Handle item", parameters
         index, thing = parameters
         return self.first_and_last(index-1, [thing], workspace)
 
@@ -1155,14 +1280,11 @@ class Commander:
         
     def first_and_last(self, place, parameters, workspace):
         place = int(place)
-        print parameters
         if self._is_word(parameters[0]):
             chars, error = self._split_word(parameters[0])
-            print "Chars=", chars, "Place=", place
             return "\"" + chars[place]
         elif self._is_list(parameters[0]):
             words, error = self._split_list(parameters[0])
-            print "Words=", words, "Place=", place
             return words[place]
         else:
             return None, "can't split "+str(parameters)
@@ -1190,7 +1312,7 @@ class Commander:
         else:
             return None, "can't split "+str(parameters)
 
-    def handle_to(self, words_or_text, workspace, debug=True):
+    def handle_to(self, words_or_text, workspace, debug=False):
         if type(words_or_text) == type([]):
             words = words_or_text
         else:
@@ -1208,14 +1330,15 @@ class Commander:
             self.workspace.procedures[self.current_proc_name][1].append(text)
         return
 
-    def handle_set_item(self, parameters, workspace={}):
+    def handle_set_item(self, parameters):
         num, array, thing = parameters
         items, origin, error = self._split_array(array)
         items[int(num) - origin] = "[" + thing + "]"
         if origin == 1:
-            return "{" + " ".join(items) + "}"
+            new_array = "{" + " ".join(items) + "}"
         else:
-            return "{" + " ".join(items) + "}@"+str(origin)
+            new_array = "{" + " ".join(items) + "}@"+str(origin)
+        return new_array
         
     def _parse_word(self, word, workspace={}):
         w = str(word)
@@ -1256,7 +1379,6 @@ class Commander:
         return "\"" + ("".join([self._parse_word(p, workspace) for p in parameters]))
 
     def construct_list(self, parameters, workspace={}):
-        print "List: Parameters=", parameters
         l = []
         for p in parameters:
             if self._is_word(p):
@@ -1266,7 +1388,6 @@ class Commander:
         return "[" + " ".join(l) + "]"
         
     def construct_sentence(self, parameters, workspace={}):
-        print "Sentence", parameters
         l = []
         for p in parameters:
             if self._is_word(p):
@@ -1666,11 +1787,10 @@ class Commander:
         all_ok = True
         for i in xrange(times):
             self.current_repcount = i + 1
-            all_ok = self.handle_command(loop_body, workspace={})
+            all_ok = self.handle_command_line(loop_body, workspace={})
         return all_ok
         
     def for_loop(self, parameters, workspace={}):
-        print "For", workspace.names
         loop_header, loop_body = parameters
         words, error = self.tokenize(loop_header[1:-1])
         if not error:
@@ -1693,7 +1813,7 @@ class Commander:
                         current_step, dummy, error = self.process_expression(words, workspace)
                     else:
                         current_step = step
-                    all_ok = self.handle_command(loop_body[1:-1], workspace)
+                    all_ok = self.handle_command_line(loop_body[1:-1], workspace)
                     workspace.names[variable] = workspace.names[variable] + current_step
             else:
                 while workspace.names[variable] >= end:
@@ -1701,7 +1821,7 @@ class Commander:
                         current_step, dummy, error = self.process_expression(words, workspace)
                     else:
                         current_step = step
-                    all_ok = self.handle_command(loop_body[1:-1], workspace)
+                    all_ok = self.handle_command_line(loop_body[1:-1], workspace)
                     workspace.names[variable] = workspace.names[variable] + current_step
         else:
             print "Error:", error
@@ -1833,7 +1953,7 @@ class App:
         self.gc = self.area.window.new_gc(foreground=None, background=None, font=None, function=-1,\
                                           fill=-1, tile=None, stipple=None, clip_mask=None, subwindow_mode=-1\
                                           ,ts_x_origin=-1, ts_y_origin=-1, clip_x_origin=-1,clip_y_origin=-1,\
-                                          graphics_exposures=-1,line_width=-1, line_style=-1, cap_style=-1,\
+                                          graphics_exposures=-1,line_width=1, line_style=-1, cap_style=-1,\
                                           join_style=-1)
 
     def handle_keypress(self, widget=None, event=None):
@@ -1857,7 +1977,7 @@ class App:
         
     def handle_command(self, widget=None, event=None):
         text = widget.get_text()
-        all_ok = self.commander.handle_command(text)
+        all_ok = self.commander.handle_command_line(text)
         widget.set_text("")
         if self.history_mode:
             pass
@@ -1922,6 +2042,13 @@ class App:
         sy = self._fix_y(sy)
         ey = self._fix_y(ey)
         self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
+
+    def draw_circle(self, x, y, diam):
+        print "Drawing circle: x,y,diam=", x,y,diam
+        print "Line width=", self.gc.line_width
+        diam = int(diam)
+        filled = False
+        self.area.window.draw_arc(self.gc, filled, int(x - (diam/2)), int(y - (diam/2)), diam, diam, 0, 360 * 64)
 
     def destroy(self, event=None):
         gtk.main_quit()

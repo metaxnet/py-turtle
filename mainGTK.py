@@ -72,9 +72,16 @@ class Workspace:
         self.traced = []
         self.stepped = []
         self.outer_workspace = outer_workspace
+        self.lowercase_lists={}
+
+    def _fix_lowercase_searchlist(self, dic_name):
+        l = self.__dict__[dic_name].keys()
+        lower_l = [x.lower() for x in l]
+        self.lowercase_lists[dic_name] = lower_l        
 
     def set_primitives(self, primitives):
         self.primitives = primitives
+        self._fix_lowercase_searchlist("primitives")
         
     def set_outer_workspace(self, workspace):
         self.outer_workspace = workspace
@@ -83,8 +90,11 @@ class Workspace:
         return "["+" ".join(l)+"]"
         
     def _is_in(self, item, dic_name):
+        print "Looking for", item, "in", dic_name
         l = self.__dict__[dic_name].keys()
-        lower_l = [x.lower() for x in l]
+        if dic_name not in self.lowercase_lists:
+            self._fix_lowercase_searchlist(dic_name)
+        lower_l = self.lowercase_lists[dic_name]
         if item.lower() in lower_l:
             return l[lower_l.index(item.lower())]
         else:
@@ -92,6 +102,7 @@ class Workspace:
 
     def handle_proc_input(self, varname, value):
         self.names[varname] = value
+        self._fix_lowercase_searchlist("names")
         return True
         
     def handle_make(self, varname, value):
@@ -106,6 +117,7 @@ class Workspace:
         else:
             self.names[varname] = value
             all_ok = True
+            self._fix_lowercase_searchlist("names")
         return all_ok
 
     def handle_name(self, value, varname):
@@ -120,6 +132,7 @@ class Workspace:
         else:
             self.names[varname] = value
             all_ok = True
+        self._fix_lowercase_searchlist("names")
         return all_ok
         
     def handle_thing(self, varname):
@@ -148,12 +161,6 @@ class Workspace:
             return self.primitives[fixed]
         else:
             return None
-        #if procname in self.procedures:
-        #    return self.procedures[procname]
-        #elif self.outer_workspace is not None:
-        #    return self.outer_workspace.get_procedure(procname)
-        #else:
-        #    return None
         
     def handle_global(self, varname):
         if self.outer_workspace is not None:
@@ -163,6 +170,7 @@ class Workspace:
                 pass
             else:
                 self.names[varname] = None
+                self._fix_lowercase_searchlist("names")
             return True
         
     def _find_in_recursive(self, name, dic_name):
@@ -179,49 +187,24 @@ class Workspace:
             return TRUE
         else:
             return FALSE
-        #if (name in self.procedures()) or (name in self.primitives()):
-        #    return TRUE
-        #elif self.outer_workspace is not None:
-        #    return self.outer_workspace.handle_procedurep(name)
-        #return FALSE
 
     def handle_primitivep(self, name):
         return self._find_in_recursive(name, "primitives")
-        #if name in self.primitives():
-        #    return TRUE
-        #elif self.outer_workspace is not None:
-        #    return self.outer_workspace.handle_primitivep(name)
-        #return FALSE
 
     def handle_definedp(self, name):
         return self._find_in_recursive(name, "procedures")
-        #if name in self.procedures():
-        #    return TRUE
-        #elif self.outer_workspace is not None:
-        #    return self.outer_workspace.handle_definedp(name)
-        #return FALSE
 
     def handle_namep(self, name):
         return self._find_in_recursive(name, "names")
-        #if name in self.names():
-        #    return TRUE
-        #elif self.outer_workspace is not None:
-        #    return self.outer_workspace.handle_namep(name)#
-        #
-        #return FALSE
 
     def handle_plistp(self, name):
         return self._find_in_recursive(name, "plists")
-        #if name in self.plists():
-        #    return TRUE
-        #elif self.outer_workspace is not None:
-        #    return self.outer_workspace.handle_plistp(name)
-        #return FALSE
         
     def handle_local(self, name):
         fixed = self._is_in(name, "names")
         if fixed is None:
             self.names[name] = None
+            self._fix_lowercase_searchlist("names")
         return True
 
     def handle_contents(self):
@@ -401,7 +384,6 @@ class Commander:
             (["output"],             ["ehzr"],                  [TNG],         None,                      None),\
             (["help"],               ["ozre"],                  [],            self.handle_help,          None)\
             ]
-            #(["circle"],             ["oigvl"]),\
             #(["dot"],                ["nqvde"]),\
             #(["stamp"],              ["hvtmt"]),\
             #(["clearstamp"],         ["nqe`hvtmt"]),\
@@ -792,14 +774,14 @@ class Commander:
                 print "Words=", words
             while not words[0]:
                 words = words[1:]
+            command = words[0]
             if debug:
-                print words[0], "in self.commands?", workspace.handle_primitivep(words[0])
-                print words[0], "in procedures?", workspace.handle_definedp(words[0])
-                print words[0], "is a list?", self._is_list(words[0])
-                print words[0], "is a word?", self._is_word(words[0])
-                print words[0], "is an array?", self._is_array(words[0])
-            if workspace.handle_definedp(words[0]) == TRUE: #words[0] in workspace._get_procedures():
-                command = words[0]
+                print command, "in self.commands?", workspace.handle_primitivep(command)
+                print command, "in procedures?", workspace.handle_definedp(command)
+                print command, "is a list?", self._is_list(command)
+                print command, "is a word?", self._is_word(command)
+                print command, "is an array?", self._is_array(command)
+            if workspace.handle_definedp(command) == TRUE: #words[0] in workspace._get_procedures():
                 words = words[1:]
                 new_workspace = Workspace(workspace)
                 for variable in workspace.get_procedure(command)[0]:
@@ -815,21 +797,15 @@ class Commander:
                         break
                 all_ok = True
                         
-            elif workspace.handle_primitivep(words[0]) == TRUE: #words[0] in self.commands:
+            elif workspace.handle_primitivep(command) == TRUE: #words[0] in self.commands:
                 if debug: 
-                    print "Process command:", words[0]
-                command = words[0]
+                    print "Process command:", command
                 words = words[1:]
                 data = workspace.get_primitive(command)
-                #print "Primitive=", data
                 token = data[0] #self.commands[fixed][0]
                 inputs = data[1] #self.commands[token][1]
                 function = data[2] #self.commands[token][2]
                 default_input = data[3] #self.commands[token][3]
-                #token = self.commands[command][0]
-                #inputs = self.commands[token][1]
-                #function = self.commands[token][2]
-                #default_input = self.commands[token][3]
                 if type (default_input) == type([]) and WS in default_input:
                     default_input[default_input.index(WS)] = workspace
                 
@@ -871,18 +847,6 @@ class Commander:
                     self.handle_to(words, workspace)
                     words = []
                     
-                #elif token == "make":
-                #    name, words, error = self.process_expression(words[:], workspace)
-                #    value, words, error = self.process_expression(words[:], workspace) 
-                #    workspace.handle_make(name[1:], value)
-                #    words = []                
-
-                #elif token == "name":
-                #    value, words, error = self.process_expression(words[:], workspace)
-                #    name, words, error = self.process_expression(words[:], workspace) 
-                #    workspace.handle_name(value, name[1:])
-                #    words = []                
-
                 elif token == "setitem":
                     index, words, error = self.process_expression(words[:], workspace)
                     name = words[0]
@@ -903,7 +867,8 @@ class Commander:
                     else:
                         all_ok = function(parameters)
             else:
-                print "No COMMAND found in {%s}" % words[0]
+                print "No COMMAND found in {%s}" % command
+                words = words[1:]
                 all_ok = False
             if debug: 
                 print "ALL_OK=", all_ok
@@ -1328,6 +1293,7 @@ class Commander:
             self.current_proc_name = ""
         else:
             self.workspace.procedures[self.current_proc_name][1].append(text)
+        self.workspace._fix_lowercase_searchlist("procedures")
         return
 
     def handle_set_item(self, parameters):
@@ -1658,13 +1624,13 @@ class Commander:
         distance = parameters[0]
         return self._move_distance(distance, 1)
             
-    def right(self, parameters, workspace={}):
+    def left(self, parameters, workspace={}):
         degrees = parameters[0]
         self.turtle_heading = (self.turtle_heading - degrees) % 360
         self.refresh_turtle_flag = True
         return True
 
-    def left(self, parameters, workspace={}):
+    def right(self, parameters, workspace={}):
         degrees = parameters[0]
         self.turtle_heading = (self.turtle_heading + degrees) % 360
         self.refresh_turtle_flag = True
@@ -1806,6 +1772,7 @@ class Commander:
                     step = -1
 
             workspace.names[variable] = start
+            workspace._fix_lowercase_searchlist("names")
             #workspace.handle_proc_input(variable, start)
             if end > start:
                 while workspace.names[variable] <= end:
@@ -1929,9 +1896,12 @@ class App:
         self.textview = gtk.TextView()
         self.textview.set_buffer(self.textbuffer)
         self.textview.set_editable(False)
+        self.scrolled2 = gtk.ScrolledWindow()
+        self.scrolled2.set_size_request(500, 150)
+        self.scrolled2.add_with_viewport(self.textview)
         self.vpaned = gtk.VPaned()
         self.vpaned.add1(self.scrolled)
-        self.vpaned.add2(self.textview)
+        self.vpaned.add2(self.scrolled2)
         self.label = gtk.Label()
         self.entry = gtk.Entry()
         self.entry.connect("activate", self.handle_command)
@@ -1953,7 +1923,7 @@ class App:
         self.gc = self.area.window.new_gc(foreground=None, background=None, font=None, function=-1,\
                                           fill=-1, tile=None, stipple=None, clip_mask=None, subwindow_mode=-1\
                                           ,ts_x_origin=-1, ts_y_origin=-1, clip_x_origin=-1,clip_y_origin=-1,\
-                                          graphics_exposures=-1,line_width=1, line_style=-1, cap_style=-1,\
+                                          graphics_exposures=-1,line_width=-1, line_style=-1, cap_style=-1,\
                                           join_style=-1)
 
     def handle_keypress(self, widget=None, event=None):
@@ -1977,6 +1947,7 @@ class App:
         
     def handle_command(self, widget=None, event=None):
         text = widget.get_text()
+        self.add_command_line_to_textscreen(text)
         all_ok = self.commander.handle_command_line(text)
         widget.set_text("")
         if self.history_mode:
@@ -1986,6 +1957,9 @@ class App:
             self.history_index = len(self.history) - 1
         self.history_mode = False
         widget.grab_focus()
+        
+    def add_command_line_to_textscreen(self, text):
+        self.textbuffer.insert_at_cursor(text+"\n")
 
     def clear_screen(self):
         self.area.window.clear()
@@ -2044,11 +2018,16 @@ class App:
         self.area.window.draw_line(self.gc, int(round(sx)), int(round(sy)), int(round(ex)), int(round(ey)))
 
     def draw_circle(self, x, y, diam):
-        print "Drawing circle: x,y,diam=", x,y,diam
-        print "Line width=", self.gc.line_width
+        fix_line_width_flag = False
+        if self.gc.line_width == 0:
+            fix_line_width_flag = True
+            self.gc.line_width = 1
         diam = int(diam)
         filled = False
         self.area.window.draw_arc(self.gc, filled, int(x - (diam/2)), int(y - (diam/2)), diam, diam, 0, 360 * 64)
+        if fix_line_width_flag == True:
+            self.gc.line_width = 0
+        
 
     def destroy(self, event=None):
         gtk.main_quit()

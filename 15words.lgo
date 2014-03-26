@@ -1,4 +1,4 @@
-to wait "l
+to wait.a.bit "l
 for [i 0 5000] [make "dummy :i]
 pu
 setpos [300 300]
@@ -9,54 +9,53 @@ pd
 seth 0
 setpensize [1 1]
 end
-
+ht
 cs
 repeat 1800 [fd 10 rt (repcount + 0.1)]
-wait "roses-1 cs
+wait.a.bit "roses-1 cs
 repeat 3600 [fd 10 rt repcount + .2]
-wait "roses-2 cs
+wait.a.bit "roses-2 cs
 repeat 8 [rt 45 repeat 6 [repeat 90 [fd 2 rt 2] rt 90]]
-wait "dahlia cs
+wait.a.bit "dahlia cs
 for [i 0 420] [seth :i repeat :i [fd 2 rt 1] pu home pd]
-wait "layers cs
+wait.a.bit "layers cs
 repeat 360 [setxy (sin(2 * repcount)) * 150 (sin(3 * repcount)) * 150] 
-wait "math-1 cs
+wait.a.bit "math-1 cs
 repeat 360 [setxy (sin(89 * repcount)) * 150 (sin(179 * repcount)) * 150] 
-wait "math-2 cs
+wait.a.bit "math-2 cs
 repeat 360 [setxy (sin(254 * repcount)) * 150 (sin(201 * repcount)) * 150] 
-wait "math-3 cs
+wait.a.bit "math-3 cs
 repeat 360 [setxy (sin(327 * repcount)) * 150 (sin(66 * repcount)) * 150] 
-wait "math-4 cs
+wait.a.bit "math-4 cs
 for [l 10 80 5] [repeat 5 [repeat 8 [fd :l rt 45] rt 72]]
-wait "penta-octagon cs
+wait.a.bit "penta-octagon cs
 px setpensize [100 100] repeat 100 [repeat 72 [fd 20 rt 10] rt 90]
-wait "circus cs
+wait.a.bit "circus cs
 px repeat 1000 [fd 40 fd 40 bk 80 rt 1]
-wait "radar cs
+wait.a.bit "radar cs
 for [i 0 2000] [fd 5 rt (90 * sin :i)]
-wait "slalom-scrolls cs
+wait.a.bit "slalom-scrolls cs
 for [i 0 4700] [fd 10 rt (180 * sin (:i * :i))]
-wait "hairy-star cs
+wait.a.bit "hairy-star cs
 for [i 0 2200] [fd (25 * (sin :i)) rt (:i * :i)]
-wait "jaggy-star cs
+wait.a.bit "jaggy-star cs
 for [i 0 1002] [fd 8 seth (360 * (power :i 3) / 1002)]
-wait "bullring
+wait.a.bit "bullring
 px for[x 1 10000] [fd :x rt 89.99]
-wait "square-spiral-variation-1
+wait.a.bit "square-spiral-variation-1
 for [x 1 150] [fd :x rt 89]
-wait "square-spiral-variation-2
+wait.a.bit "square-spiral-variation-2
 px repeat 10000 [fd 200 rt 179]
-wait "radar-variation-2
+wait.a.bit "radar-variation-2
 repeat 12 [repeat random 50 [fd 100 bk 95 rt 2] rt 180]
-wait "feathers
+wait.a.bit "feathers
 repeat 50 [repeat random 100 [fd 300 bk 295 rt 2] rt 180]
-wait "Feathers-variation-1
+wait.a.bit "Feathers-variation-1
 for [i 0.01 4 0.05] [repeat 180 [fd :i rt 1]]
-wait "spiral
+wait.a.bit "spiral
 px setpensize [20 20] repeat 10000 [fd 2 rt 2]
-wait "ring
+wait.a.bit "ring
 px setpensize [200 200] repeat 36 [fd 20 rt 10]
-wait "ring-variation-1 
-
+wait.a.bit "ring-variation-1 
 px for [x 1 10000] [fd :x rt 90]
-wait "square-spiral cs
+wait.a.bit "square-spiral cs

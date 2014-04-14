@@ -46,6 +46,7 @@ ARR = 3
 TNG = 4
 TRU = 5 #A "tf" input must be the word TRUE, the word FALSE, or a list.  If it's a list, then it must be a Logo expression, which will be evaluated to produce a value that must be TRUE or FALSE.  The comparisons with TRUE and FALSE are always case-insensitive.
 CHR = 6
+CNT = 7 #All procedures whose input is indicated as "contentslist" will accept a single word (taken as a procedure name), a list of words (taken as names of procedures), or a list of three lists as described under the CONTENTS command above.
 
 PROCESS_LAZY = 0
 PROCESS_NORMAL = 1
@@ -54,6 +55,19 @@ PROCESS_GREEDY = 2
 class HebrewHandler:
     def __init__(self, hebrew_latin=HEBREW_LATIN):
         self.dic = self.create_dic(hebrew_latin)
+
+    def fix_unicode(self, bytes):
+        i = 0
+        end = len(bytes)
+        out = []
+        while i < end:
+            if ord(bytes[i]) == 215:
+                out.append(unichr(5 * 256 + ord(bytes[i+1]) + 64))
+                i = i + 2 
+            else:
+                out.append(unichr(ord(bytes[i])))
+                i = i + 1
+        return u"".join(out)
 
     def create_dic(self, hebrew_latin):
         dic = {}
@@ -187,6 +201,15 @@ class Workspace:
             return self.outer_workspace._find_in_recursive(name, dic_name)
         else:
             return FALSE
+            
+    def get_proc_name(self, name):
+        fixed = self._is_in(name, "procedures")
+        if fixed is not None:
+            return fixed
+        elif self.outer_workspace is not None:
+            return self.outer_workspace.get_proc_name(name)
+        else:
+            return None
         
     def handle_procedurep(self, name):
         if self.handle_primitivep(name) == TRUE:
@@ -353,7 +376,7 @@ class Commander:
             (["heading"],            ["kivvN"],                 [],            self.handle_turtle_query,  "heading"),\
             (["towards"],            ["zvvit"],                 [TNG],         self.towards,              None),\
             #
-            (["repeat"],             ["hzvr"],                  [NUM,TNG],     self.repeat_loop,          None),\
+            (["repeat"],             ["hzvr"],                  [NUM,TNG],     self.repeat_loop,          [WS]),\
             (["for"],                ["lkl"],                   [TNG,TNG],     self.for_loop,             None),\
             (["if"],                 ["aM"],                    [TRU,LST],     self.handle_if,            None),\
             (["ifelse"],             ["aM.vahrt"],              [TRU,LST,LST], self.handle_if_else,       None),\
@@ -385,12 +408,14 @@ class Commander:
             (["name"],               ["qra.l"],                 [TNG,WRD],     self.handle_workspace,     [WS,"name"]),\
             (["local"],              ["mqvmi"],                 [WRD],         self.handle_workspace,     [WS,"local"]),\
             (["global"],             ["ovlmi"],                 [WRD],         self.handle_workspace,     [WS,"global"]),\
+            (["text"],               ["me.firvw"],              [WRD],         self.handle_workspace,     [WS,"text"]),\
             (["end"],                ["svF"],                   [],            None,                      None),\
             (["to"],                 ["lmd"],                   [],            None,                      None),\
             (["load"],               ["uoN"],                   [],            None,                      None),\
             (["stop"],               ["oxvr"],                  [],            None,                      None),\
+            (["edit"],               ["orvK"],                  [WRD],         self.handle_workspace,     [WS, "edit"]),\
             (["output"],             ["ehzr"],                  [TNG],         None,                      None),\
-            (["wait"],               ["emtN"],                  [NUM],         self.handle_wait,        None),\
+            (["wait"],               ["emtN"],                  [NUM],         self.handle_wait,          None),\
             (["help"],               ["ozre"],                  [],            self.handle_help,          None)\
             ]
             #(["dot"],                ["nqvde"]),\
@@ -649,21 +674,23 @@ class Commander:
                     parameter, words, error = self.process_expression(words, workspace, parameter_only=False)
                     parameters.append(parameter)
 
-            if token in ["stop", "output"]:
-                
+            if token in ["stop", "output", "end"]:
                 pass
             elif default_input != None:
                 value = function(default_input, parameters) #, workspace)
                 #if value == None:
                 #    print "PROBLEM WITH RETURN_VALUE on", token
             else:
-                value = function(parameters) #, workspace)
+                try:
+                    value = function(parameters) #, workspace)
+                except:
+                    print "Token=", token
                 #if value == None:
                 #    print "PROBLEM WITH RETURN_VALUE on", token
         return value, words
         
         
-    def process_expression(self, words, workspace={}, parameter_only=False, mode = PROCESS_NORMAL, debug=False):
+    def process_expression(self, words, workspace={}, parameter_only=False, mode = PROCESS_NORMAL, debug=True):
         if debug:
             print "Process expression: Words=", words
         if not workspace:
@@ -716,23 +743,26 @@ class Commander:
             
         elif token in self.known_tokens and self.known_tokens[token][0] == PRIMITIVE:
             data = self.known_tokens[token][1]
+            #if type (data[3]) == type([]) and WS in data[3]:
+            #    data[3][data[3].index(WS)] = workspace
             value, words = self._handle_primitive(data, words, workspace, debug, mode=PROCESS_NORMAL)
             
         elif workspace.handle_definedp(token) == TRUE: #in workspace._get_procedures():
             proc = workspace.get_procedure(token)
-            self.known_tokens[command] = [PROCEDURE, proc]
+            self.known_tokens[token] = [PROCEDURE, proc]
             value, words = self._handle_procedure(proc, words, workspace, debug)            
             
         elif workspace.handle_primitivep(token) == TRUE: #token in self.commands: 
             data = workspace.get_primitive(token)
             self.known_tokens[token] = [PRIMITIVE, data]
             #value, words = self._handle_primitive(data, words, workspace, debug, mode=PROCESS_NORMAL)
-            token = data[0] #self.commands[fixed][0]
-            inputs = data[1] #self.commands[token][1]
-            function = data[2] #self.commands[token][2]
-            default_input = data[3] #self.commands[token][3]
-            if type (default_input) == type([]) and WS in default_input:
-                default_input[default_input.index(WS)] = workspace
+            #token = data[0] #self.commands[fixed][0]
+            #inputs = data[1] #self.commands[token][1]
+            #function = data[2] #self.commands[token][2]
+            #default_input = data[3] #self.commands[token][3]
+            #if type (default_input) == type([]) and WS in default_input:
+            #if type (data[3]) == type([]) and WS in data[3]:
+            #    data[3][data[3].index(WS)] = workspace
 
             value, words = self._handle_primitive(data, words, workspace, debug, mode=PROCESS_NORMAL)
 
@@ -786,7 +816,7 @@ class Commander:
                 
     def handle_text(self, text, workspace={}):
         # missing end brackets/parentheses should cause continuation line
-        lines = text.split("\n")
+        lines = [l for l in text.split("\n")]
         i = 0
         wait_for_complete_line_flag = False
         command = ""
@@ -802,7 +832,8 @@ class Commander:
                     wait_for_complete_line_flag = False                   
                 
                 if ";" in lines[i]:
-                    line = line[i][:lines[i].index(";")]
+                    print lines[i].index(";")
+                    line = lines[i][:lines[i].index(";")]
                 else:
                     line = lines[i]
                 i = i + 1
@@ -810,14 +841,15 @@ class Commander:
                 if not wait_for_complete_line_flag:
                     self.handle_command_line(command, workspace)
                 
-    def handle_command_line(self, text, workspace={}, debug=False):
+    def handle_command_line(self, text, workspace={}, debug=True):
         all_ok = True
         if not text:
             return all_ok
-        if not workspace:
-            workspace = self.workspace
         if debug:
             print "Handling", text
+            print "Workspace=", workspace
+        if not workspace:
+            workspace = self.workspace
 
         # The two-character sequence #! at the beginning of a line also starts a comment.
         # A semicolon begins a comment in an instruction line.  Logo ignores characters from the semicolon to the end of the line.  A tilde as the last character still indicates a continuation line, but not a continuation of the comment.
@@ -830,7 +862,8 @@ class Commander:
         if self.temp_image:
             self.app.paste_turtle(self.temp_image, startx, starty)
             self.temp_image = None
-
+        if type(text) == type("") and chr(215) in text:
+            text = self.HH.fix_unicode(text)
         unitext = text.decode("utf-8")
         if self.current_proc_name:
             self.handle_to(unitext, workspace)
@@ -928,6 +961,28 @@ class Commander:
                 parameters = parameters[1:]
             elif command == "global":
                 all_ok = workspace.handle_global(parameters[0])
+                parameters = parameters[1:]
+            elif command == "text":
+                name = workspace.get_proc_name(parameters[0][1:])
+                text = workspace.get_procedure(name)
+                header_line = " ".join(text[0])
+                lines = [header_line] + text[1]
+                line_list = ["[" + line + "]" for line in lines]
+                text_list = self.construct_list(line_list)
+                self.show_output([text_list])
+                parameters = parameters[1:]
+                all_ok = True
+            elif command == "edit":
+                name = parameters[0]
+                text = self.app.handle_edit(name[1:])
+                if text != None:
+                    lines = [l for l in text.split("\n") if l]
+                    tokens, error = self.tokenize(lines[0])
+                    if lines[-1] == "end" or lines[-1] == self.HH.to_hebrew("svF"):
+                        if tokens[1] == name:
+                            workspace.procedures[name] = [tokens[2:]] + [lines[1:-1]]
+                            workspace._fix_lowercase_searchlist("procedures")
+                all_ok = True
                 parameters = parameters[1:]
         if all_ok is None:
             print "All ok is none after", command
@@ -1052,12 +1107,25 @@ class Commander:
         origin = int(origin)
         return words, origin, error 
 
-    def handle_circle(self, parameters):
-        x, y = self._get_turtle_position()
-        diameter = parameters[0]
-        self.app.draw_circle(x, y, diameter)
-        return True
-        
+    def _is_list(self, thing):
+        if thing and str(thing)[0] == "[" and str(thing)[-1] == "]":
+           return TRUE
+        return FALSE
+
+    def _is_word(self, thing):
+        if not thing:
+           return FALSE
+        elif str(thing)[0] == "[" and str(thing)[-1]=="]":
+           return False
+        elif str(thing)[0] == "{" and str(thing)[-1]=="}":
+           return False        
+        return TRUE
+
+    def _is_array(self, thing, workspace={}):
+        if thing[0] == "{" and ((thing[-1] == "}") or ("}@" in thing)):
+           return TRUE
+        return FALSE
+
     def handle_if(self, parameters, workspace={}):
         condition, block = parameters
         all_ok = True
@@ -1084,6 +1152,53 @@ class Commander:
             result, dummy, error = self.process_expression(words[:], workspace)
         return all_ok
         
+    def repeat_loop(self, parameters, workspace={}):
+        times, loop_body = parameters
+        all_ok = True
+        for i in xrange(times):
+            self.current_repcount = i + 1
+            all_ok = self.handle_command_line(loop_body, workspace)
+        return all_ok
+        
+    def for_loop(self, parameters, workspace={}):
+        loop_header, loop_body = parameters
+        words, error = self.tokenize(loop_header[1:-1])
+        if not error:
+            variable = words[0]
+            start, words, error = self.process_expression(words[1:], workspace)
+            end, words, error = self.process_expression(words, workspace)
+            if words:
+                step = None
+            else:
+                if end > start:
+                    step = 1
+                else:
+                    step = -1
+
+            workspace.names[variable] = start
+            workspace._fix_lowercase_searchlist("names")
+            #workspace.handle_proc_input(variable, start)
+            if end > start:
+                while workspace.names[variable] <= end:
+                    if step == None:
+                        current_step, dummy, error = self.process_expression(words, workspace)
+                    else:
+                        current_step = step
+                    all_ok = self.handle_command_line(loop_body[1:-1], workspace)
+                    workspace.names[variable] = workspace.names[variable] + current_step
+            else:
+                while workspace.names[variable] >= end:
+                    if step == None:
+                        current_step, dummy, error = self.process_expression(words, workspace)
+                    else:
+                        current_step = step
+                    all_ok = self.handle_command_line(loop_body[1:-1], workspace)
+                    workspace.names[variable] = workspace.names[variable] + current_step
+        else:
+            print "Error:", error
+            return False
+        return True
+
     def handle_lowercase(self, parameters, workspace={}):
         return str(parameters[0]).lower()
 
@@ -1102,41 +1217,18 @@ class Commander:
     def handle_quoted(self, parameters, workspace={}):
         return "\"" + parameters[0]
         
-    def handle_wait(self, parameters):
-        self.app.handle_wait(parameters[0])
-        return True
-
     def is_word(self, parameters, workspace={}):
         thing = parameters[0]
         return self._is_word(thing)
             
-    def _is_word(self, thing):
-        if not thing:
-           return FALSE
-        elif str(thing)[0] == "[" and str(thing)[-1]=="]":
-           return False
-        elif str(thing)[0] == "{" and str(thing)[-1]=="}":
-           return False        
-        return TRUE
-
     def is_list(self, parameters, workspace={}):
         thing = parameters[0]
         return self._is_list(thing)
             
-    def _is_list(self, thing):
-        if thing and str(thing)[0] == "[" and str(thing)[-1] == "]":
-           return TRUE
-        return FALSE
-
     def is_array(self, thing, parameters, workspace={}):
         thing = parameters[0]
         return self._is_array(thing)
             
-    def _is_array(self, thing, workspace={}):
-        if thing[0] == "{" and ((thing[-1] == "}") or ("}@" in thing)):
-           return TRUE
-        return FALSE
-
     def is_empty(self, parameters, workspace={}):
         thing = parameters[0]
         if not thing or thing == "[]":
@@ -1432,35 +1524,7 @@ class Commander:
             temp = "}".join(items[-1])
             end = len(temp)
         return "["+a[1:end]+"]"
-            
-    def clear_screen(self, parameters=[], workspace={}):
-        self.app.clear_screen()
-        self.home()
-        self.refresh_turtle_flag = True
-        return True
 
-    def clean(self, parameters=[], workspace={}):
-        self.app.clear_screen()
-        self.refresh_turtle_flag = True
-        return True
-
-    def test(self):
-        return
-        print "1. 100.0, 100.0, 300.0, 300.0", self._calculate_visible_segment(100,100,300,300)
-        print "2. -100.0, -100.0, 400.0, 400.0", self._calculate_visible_segment(-100,-100,400,400)
-        print "2y. 400.0, 400.0, -100.0, -100.0", self._calculate_visible_segment(400,400,-100,-100)
-        print "2z. -100.0, 400.0, 400.0, -100.0", self._calculate_visible_segment(-100,400,400,-100)
-        print "2a. -110.0, -100.0, 290.0, 300.0", self._calculate_visible_segment(-110,-100,290,300)
-        print "2b. -100.0, -90.0, 300.0, 310.0", self._calculate_visible_segment(-100,-90,300,310)
-        print "2c. -100.0, 310.0, 300.0, -90.0", self._calculate_visible_segment(-100,310,300,-90)
-        print "3. -100.0, -100.0, -100.0, -300.0", self._calculate_visible_segment(-100,-100,-100,-300)        
-        print "4. -1000.0, -1000.0, 3000.0, 3000.0", self._calculate_visible_segment(-1000,-1000,3000,3000)
-        print "5. -1000.0, 0.0, 3000.0, 0.0", self._calculate_visible_segment(-1000,0,3000,0)
-        print "6. 0.0, -1000.0, 0.0, 3000.0", self._calculate_visible_segment(0,-1000,0,3000)
-        print "7. -200.0, -1000.0, 300.0, 1000.0", self._calculate_visible_segment(-200,-1000,300,1000)
-        print "8. -50, 50, 600, 50", self._calculate_visible_segment(-50,50,600,50)
-        print "8. 50, 600, 50, -50", self._calculate_visible_segment(50,600,50,-50)
-        
     def _is_visible(self, point):
         if point[0] >=0 and point[0] <= self.screen_width \
            and point[1] >= 0 and point[1] <= self.screen_height:
@@ -1660,6 +1724,41 @@ class Commander:
         endy = starty + direction * diry * (distance + 0.0)
         return self._move_to_position(endx, endy)
 
+    def _calc_dirx_and_diry(self, angle):
+        if angle == 180:
+            dirx = 0.0
+        else:
+            dirx = math.sin(math.radians(angle))
+        diry = math.cos(math.radians(angle))
+        return dirx, diry
+            
+    def clear_screen(self, parameters=[], workspace={}):
+        self.app.clear_screen()
+        self.home()
+        self.refresh_turtle_flag = True
+        return True
+
+    def clean(self, parameters=[], workspace={}):
+        self.app.clear_screen()
+        self.refresh_turtle_flag = True
+        return True
+
+    def handle_label(self, parameters, workspace={}):
+        text = parameters[0]
+        startx, starty = self._get_turtle_position()
+        if self._is_word(text):
+           text = text[1:]
+        elif self._is_list(text):
+           text = text[1:-1]
+        self.app.draw_label(text, startx, starty)
+        return True
+        
+    def handle_circle(self, parameters):
+        x, y = self._get_turtle_position()
+        diameter = parameters[0]
+        self.app.draw_circle(x, y, diameter)
+        return True        
+
     def forward(self, parameters, workspace={}):
         distance = parameters[0]
         return self._move_distance(distance, -1)
@@ -1717,52 +1816,6 @@ class Commander:
         y, tokens, error = self.process_expression(tokens[:], workspace)
         return self.handle_math("arctan", x/y)
 
-    def set_pen_position(self, pos, parameters, workspace={}):
-        self.pen_position = pos
-        return True
-        
-    def set_pen_mode(self, mode, parameters=[], workspace={}):
-        self.pen_position = PEN_DOWN
-        self.pen_mode = mode
-        self.app.set_pen_mode(mode)
-        return True
-
-    def set_draw_mode(self, parameters, workspace={}):
-        mode = parameters[0]
-        self.draw_mode = mode
-        if mode == MODE_WINDOW:
-            x = self._get_turtle_position()[0] % self.screen_width
-            y = self._get_turtle_position()[1] % self.screen_height
-            self.turtle_position = [x, y]
-        return True
-
-    def _parse_color(self, parameter, workspace={}):
-        if self.is_list([parameter]) == TRUE:
-            tokens, error = self.tokenize(parameter[1:-1])
-            r, tokens, error = self.process_expression(tokens[:], workspace)
-            g, tokens, error = self.process_expression(tokens[:], workspace)
-            b, tokens, error = self.process_expression(tokens[:], workspace)
-        else:
-            rgb = self.BASIC_COLORS[int(parameter)]
-            r = rgb[0] * 256.0
-            g = rgb[1] * 256.0
-            b = rgb[2] * 256.0
-        return r,g,b
-
-    def set_pen_color(self, parameters, workspace={}):
-        color = parameters[0]
-        r,g,b = self._parse_color(color, workspace)
-        self.app.set_foreground_color(r, g, b)
-        self.pen_color = color
-        return True
-
-    def set_screen_color(self, parameters, workspace={}):
-        color = parameters[0]        
-        r,g,b = self._parse_color(color, workspace)
-        self.app.set_background_color(r, g, b)
-        self.screen_color = color
-        return True
-
     def set_heading(self, parameters, workspace={}):
         angle = parameters[0]
         self.turtle_heading = (angle + 180) % 360
@@ -1787,66 +1840,57 @@ class Commander:
         y, words, error = self.process_expression(words[:], workspace)
         return self.set_xy([int(x), int(y)], workspace)        
 
+    def set_draw_mode(self, parameters, workspace={}):
+        mode = parameters[0]
+        self.draw_mode = mode
+        if mode == MODE_WINDOW:
+            x = self._get_turtle_position()[0] % self.screen_width
+            y = self._get_turtle_position()[1] % self.screen_height
+            self.turtle_position = [x, y]
+        return True
+
+    def _parse_color(self, parameter, workspace={}):
+        if self.is_list([parameter]) == TRUE:
+            tokens, error = self.tokenize(parameter[1:-1])
+            r, tokens, error = self.process_expression(tokens[:], workspace)
+            g, tokens, error = self.process_expression(tokens[:], workspace)
+            b, tokens, error = self.process_expression(tokens[:], workspace)
+        else:
+            rgb = self.BASIC_COLORS[int(parameter)]
+            r = rgb[0] * 256.0
+            g = rgb[1] * 256.0
+            b = rgb[2] * 256.0
+        return r,g,b
+
+    def set_screen_color(self, parameters, workspace={}):
+        color = parameters[0]        
+        r,g,b = self._parse_color(color, workspace)
+        self.app.set_background_color(r, g, b)
+        self.screen_color = color
+        return True
+
+    def set_pen_color(self, parameters, workspace={}):
+        color = parameters[0]
+        r,g,b = self._parse_color(color, workspace)
+        self.app.set_foreground_color(r, g, b)
+        self.pen_color = color
+        return True
+
+    def set_pen_position(self, pos, parameters, workspace={}):
+        self.pen_position = pos
+        return True
+        
+    def set_pen_mode(self, mode, parameters=[], workspace={}):
+        self.pen_position = PEN_DOWN
+        self.pen_mode = mode
+        self.app.set_pen_mode(mode)
+        return True
+
     def set_pen_size(self, parameters, workspace={}):
         width = self.handle_first(parameters, workspace)
         self.app.set_line_width(int(width))
         return True
-
-    def repeat_loop(self, parameters, workspace={}):
-        times, loop_body = parameters
-        all_ok = True
-        for i in xrange(times):
-            self.current_repcount = i + 1
-            all_ok = self.handle_command_line(loop_body, workspace={})
-        return all_ok
         
-    def for_loop(self, parameters, workspace={}):
-        loop_header, loop_body = parameters
-        words, error = self.tokenize(loop_header[1:-1])
-        if not error:
-            variable = words[0]
-            start, words, error = self.process_expression(words[1:], workspace)
-            end, words, error = self.process_expression(words, workspace)
-            if words:
-                step = None
-            else:
-                if end > start:
-                    step = 1
-                else:
-                    step = -1
-
-            workspace.names[variable] = start
-            workspace._fix_lowercase_searchlist("names")
-            #workspace.handle_proc_input(variable, start)
-            if end > start:
-                while workspace.names[variable] <= end:
-                    if step == None:
-                        current_step, dummy, error = self.process_expression(words, workspace)
-                    else:
-                        current_step = step
-                    all_ok = self.handle_command_line(loop_body[1:-1], workspace)
-                    workspace.names[variable] = workspace.names[variable] + current_step
-            else:
-                while workspace.names[variable] >= end:
-                    if step == None:
-                        current_step, dummy, error = self.process_expression(words, workspace)
-                    else:
-                        current_step = step
-                    all_ok = self.handle_command_line(loop_body[1:-1], workspace)
-                    workspace.names[variable] = workspace.names[variable] + current_step
-        else:
-            print "Error:", error
-            return False
-        return True
-        
-    def _calc_dirx_and_diry(self, angle):
-        if angle == 180:
-            dirx = 0.0
-        else:
-            dirx = math.sin(math.radians(angle))
-        diry = math.cos(math.radians(angle))
-        return dirx, diry
-
     def hide_turtle(self):
         startx, starty = self._get_turtle_position()
         if self.temp_image:
@@ -1870,16 +1914,6 @@ class Commander:
         else:
             self.temp_image = None
         self.app.draw_turtle(head, toe1, toe2)
-        return True
-        
-    def handle_label(self, parameters, workspace={}):
-        text = parameters[0]
-        startx, starty = self._get_turtle_position()
-        if self._is_word(text):
-           text = text[1:]
-        elif self._is_list(text):
-           text = text[1:-1]
-        self.app.draw_label(text, startx, starty)
         return True
         
     def _get_turtle_position(self):
@@ -1922,6 +1956,27 @@ class Commander:
            for hcommand in hebrew:
                 print self.HH.to_hebrew(hcommand),
            print
+
+    def handle_wait(self, parameters):
+        self.app.handle_wait(parameters[0])
+        return True
+        
+    def test(self):
+        return
+        print "1. 100.0, 100.0, 300.0, 300.0", self._calculate_visible_segment(100,100,300,300)
+        print "2. -100.0, -100.0, 400.0, 400.0", self._calculate_visible_segment(-100,-100,400,400)
+        print "2y. 400.0, 400.0, -100.0, -100.0", self._calculate_visible_segment(400,400,-100,-100)
+        print "2z. -100.0, 400.0, 400.0, -100.0", self._calculate_visible_segment(-100,400,400,-100)
+        print "2a. -110.0, -100.0, 290.0, 300.0", self._calculate_visible_segment(-110,-100,290,300)
+        print "2b. -100.0, -90.0, 300.0, 310.0", self._calculate_visible_segment(-100,-90,300,310)
+        print "2c. -100.0, 310.0, 300.0, -90.0", self._calculate_visible_segment(-100,310,300,-90)
+        print "3. -100.0, -100.0, -100.0, -300.0", self._calculate_visible_segment(-100,-100,-100,-300)        
+        print "4. -1000.0, -1000.0, 3000.0, 3000.0", self._calculate_visible_segment(-1000,-1000,3000,3000)
+        print "5. -1000.0, 0.0, 3000.0, 0.0", self._calculate_visible_segment(-1000,0,3000,0)
+        print "6. 0.0, -1000.0, 0.0, 3000.0", self._calculate_visible_segment(0,-1000,0,3000)
+        print "7. -200.0, -1000.0, 300.0, 1000.0", self._calculate_visible_segment(-200,-1000,300,1000)
+        print "8. -50, 50, 600, 50", self._calculate_visible_segment(-50,50,600,50)
+        print "8. 50, 600, 50, -50", self._calculate_visible_segment(50,600,50,-50)
         
 
 class App:
@@ -1995,7 +2050,27 @@ class App:
             return True
         else:
             self.history_mode = False
-
+            
+    def handle_edit(self, proc_name):
+        dialog = gtk.Dialog(parent=None, 
+                            flags=0, 
+                            buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,\
+                                     gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+        scrolled = gtk.ScrolledWindow()
+        scrolled.set_size_request(400, 200)
+        textbuffer = gtk.TextBuffer()
+        textbuffer.set_text("to "+proc_name+"\n")
+        textview = gtk.TextView(buffer = textbuffer)
+        scrolled.add_with_viewport(textview)
+        dialog.vbox.pack_start(scrolled)
+        dialog.show_all()
+        response = dialog.run()
+        dialog.destroy()
+        if response == gtk.RESPONSE_ACCEPT:
+           s, e = textbuffer.get_bounds()
+           return textbuffer.get_text(s, e)
+        else:
+           return None
         
     def handle_command(self, widget=None, event=None):
         text = widget.get_text()

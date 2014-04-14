@@ -19,43 +19,43 @@ repeat 8 [rt 45 repeat 6 [repeat 90 [fd 2 rt 2] rt 90]]
 wait.a.bit "dahlia cs
 for [i 0 420] [seth :i repeat :i [fd 2 rt 1] pu home pd]
 wait.a.bit "layers cs
-repeat 360 [setxy (sin(2 * repcount)) * 150 (sin(3 * repcount)) * 150] 
-wait.a.bit "math-1 cs
-repeat 360 [setxy (sin(89 * repcount)) * 150 (sin(179 * repcount)) * 150] 
-wait.a.bit "math-2 cs
-repeat 360 [setxy (sin(254 * repcount)) * 150 (sin(201 * repcount)) * 150] 
-wait.a.bit "math-3 cs
-repeat 360 [setxy (sin(327 * repcount)) * 150 (sin(66 * repcount)) * 150] 
-wait.a.bit "math-4 cs
-for [l 10 80 5] [repeat 5 [repeat 8 [fd :l rt 45] rt 72]]
-wait.a.bit "penta-octagon cs
-px setpensize [100 100] repeat 100 [repeat 72 [fd 20 rt 10] rt 90]
-wait.a.bit "circus cs
-px repeat 1000 [fd 40 fd 40 bk 80 rt 1]
-wait.a.bit "radar cs
-for [i 0 2000] [fd 5 rt (90 * sin :i)]
-wait.a.bit "slalom-scrolls cs
-for [i 0 4700] [fd 10 rt (180 * sin (:i * :i))]
-wait.a.bit "hairy-star cs
-for [i 0 2200] [fd (25 * (sin :i)) rt (:i * :i)]
-wait.a.bit "jaggy-star cs
-for [i 0 1002] [fd 8 seth (360 * (power :i 3) / 1002)]
-wait.a.bit "bullring cs
-px for[x 1 10000] [fd :x rt 89.99]
-wait.a.bit "square-spiral-variation-1 cs
-for [x 1 150] [fd :x rt 89]
-wait.a.bit "square-spiral-variation-2 cs
-px repeat 10000 [fd 200 rt 179]
-wait.a.bit "radar-variation-2 cs
-repeat 12 [repeat random 50 [fd 100 bk 95 rt 2] rt 180]
-wait.a.bit "feathers cs
-repeat 50 [repeat random 100 [fd 300 bk 295 rt 2] rt 180]
-wait.a.bit "Feathers-variation-1 cs
-for [i 0.01 4 0.05] [repeat 180 [fd :i rt 1]]
-wait.a.bit "spiral cs
-px setpensize [20 20] repeat 10000 [fd 2 rt 2]
-wait.a.bit "ring cs
-px setpensize [200 200] repeat 36 [fd 20 rt 10]
-wait.a.bit "ring-variation-1 cs
-px for [x 1 10000] [fd :x rt 90]
-wait.a.bit "square-spiral cs
+;repeat 360 [setxy (sin(2 * repcount)) * 150 (sin(3 * repcount)) * 150] 
+;wait.a.bit "math-1 cs
+;repeat 360 [setxy (sin(89 * repcount)) * 150 (sin(179 * repcount)) * 150] 
+;wait.a.bit "math-2 cs
+;repeat 360 [setxy (sin(254 * repcount)) * 150 (sin(201 * repcount)) * 150] 
+;wait.a.bit "math-3 cs
+;repeat 360 [setxy (sin(327 * repcount)) * 150 (sin(66 * repcount)) * 150] 
+;wait.a.bit "math-4 cs
+;for [l 10 80 5] [repeat 5 [repeat 8 [fd :l rt 45] rt 72]]
+;wait.a.bit "penta-octagon cs
+;px setpensize [100 100] repeat 100 [repeat 72 [fd 20 rt 10] rt 90]
+;wait.a.bit "circus cs
+;px repeat 1000 [fd 40 fd 40 bk 80 rt 1]
+;wait.a.bit "radar cs
+;for [i 0 2000] [fd 5 rt (90 * sin :i)]
+;wait.a.bit "slalom-scrolls cs
+;for [i 0 4700] [fd 10 rt (180 * sin (:i * :i))]
+;wait.a.bit "hairy-star cs
+;for [i 0 2200] [fd (25 * (sin :i)) rt (:i * :i)]
+;wait.a.bit "jaggy-star cs
+;for [i 0 1002] [fd 8 seth (360 * (power :i 3) / 1002)]
+;wait.a.bit "bullring cs
+;px for[x 1 10000] [fd :x rt 89.99]
+;wait.a.bit "square-spiral-variation-1 cs
+;for [x 1 150] [fd :x rt 89]
+;wait.a.bit "square-spiral-variation-2 cs
+;px repeat 10000 [fd 200 rt 179]
+;wait.a.bit "radar-variation-2 cs
+;repeat 12 [repeat random 50 [fd 100 bk 95 rt 2] rt 180]
+;wait.a.bit "feathers cs
+;repeat 50 [repeat random 100 [fd 300 bk 295 rt 2] rt 180]
+;wait.a.bit "Feathers-variation-1 cs
+;for [i 0.01 4 0.05] [repeat 180 [fd :i rt 1]]
+;wait.a.bit "spiral cs
+;px setpensize [20 20] repeat 10000 [fd 2 rt 2]
+;wait.a.bit "ring cs
+;px setpensize [200 200] repeat 36 [fd 20 rt 10]
+;wait.a.bit "ring-variation-1 cs
+;px for [x 1 10000] [fd :x rt 90]
+;wait.a.bit "square-spiral cs
